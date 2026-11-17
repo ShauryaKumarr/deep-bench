@@ -186,7 +186,7 @@ body::after {
   top: var(--pos, 0%);
   height: 0;
   border-top: 3px solid var(--flood);
-  transition: top 1100ms steps(14, end);
+  transition: top 1500ms steps(18, end);
   z-index: 1;
 }
 .pyramid__ball {
@@ -772,10 +772,10 @@ body:has(.cutscene) .sound-toggle__label {
   overflow: hidden;
   background: #000;
   cursor: pointer;
-  animation: drop-in 320ms steps(6) both;
+  animation: drop-in 440ms steps(7) both;
 }
 .cutscene.is-leaving {
-  animation: fade-out 180ms steps(3) forwards;
+  animation: fade-out 240ms steps(3) forwards;
 }
 @keyframes drop-in {
   from { clip-path: inset(0 0 100% 0); }
@@ -837,11 +837,11 @@ body:has(.cutscene) .sound-toggle__label {
   text-shadow: 4px 4px 0 #000;
 }
 .show-title .cutscene__title {
-  animation: stamp 360ms steps(4) forwards;
+  animation: stamp 480ms steps(5) forwards;
 }
 .show-title .cutscene__name,
 .show-title .cutscene__depth {
-  animation: appear 1ms 220ms forwards;
+  animation: appear 1ms 300ms forwards;
 }
 @keyframes stamp {
   from { opacity: 1; transform: scale(1.8); }
@@ -875,7 +875,7 @@ body:has(.cutscene) .sound-toggle__label {
   text-decoration: underline 2px;
 }
 .show-banner .cutscene__banner {
-  animation: slide-in 400ms steps(6) forwards;
+  animation: slide-in 540ms steps(7) forwards;
 }
 @keyframes slide-in {
   to { transform: none; }
@@ -934,10 +934,10 @@ body:has(.cutscene) .sound-toggle__label {
   font-size: clamp(1.25rem, 3vw, 1.75rem);
 }
 .show-level .cutscene__level {
-  animation: stamp 320ms steps(4) forwards;
+  animation: stamp 440ms steps(5) forwards;
 }
 .show-level .cutscene__verdict {
-  animation: appear 1ms 300ms forwards;
+  animation: appear 1ms 400ms forwards;
 }
 .cutscene--fulltime .cutscene__title {
   color: var(--chalk);
@@ -961,7 +961,7 @@ body:has(.cutscene) .sound-toggle__label {
   transform: scale(0);
 }
 .sq.is-on {
-  animation: pop 200ms steps(3) forwards;
+  animation: pop 270ms steps(3) forwards;
 }
 .sq--tap {
   background: var(--tap);

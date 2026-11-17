@@ -302,8 +302,8 @@ export const sfx = {
   /** Digging down a division: a rumble and a falling arpeggio. */
   dig(bus?: Bus | null) {
     play((a, out) => {
-      noise(a, out, { dur: 1.3, type: "lowpass", freq: 180, env: [[0, 0], [0.2, 0.45], [1.0, 0.35], [1.3, 0]] });
-      [659, 587, 523, 440, 392, 330, 262].forEach((f, i) => tone(a, out, "square", f, i * 0.09, 0.08, 0.045));
+      noise(a, out, { dur: 1.9, type: "lowpass", freq: 180, env: [[0, 0], [0.25, 0.45], [1.5, 0.35], [1.9, 0]] });
+      [659, 587, 523, 440, 392, 330, 262].forEach((f, i) => tone(a, out, "square", f, i * 0.12, 0.1, 0.045));
     }, bus);
   },
 

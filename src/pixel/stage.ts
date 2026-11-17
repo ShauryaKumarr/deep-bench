@@ -3,6 +3,9 @@ import { fit, loop, type Ctx } from "./engine";
 
 const SKIP_GUARD_MS = 400;
 
+/** Cutscenes play at 1 / PACE speed. Raise it to slow every scene down, lower it to speed them up. */
+export const PACE = 1.35;
+
 export interface Cue {
   at: number;
   run: () => void;
@@ -64,14 +67,15 @@ export function openStage(className: string, label: string, badge: string): Stag
         let last = 0;
         let done = false;
 
-        const stop = loop(30, (t) => {
+        const stop = loop(30, (real) => {
+          const t = real / PACE; // scene time: everything is scripted in these units
           const dt = Math.min(0.1, t - last);
           last = t;
           while (pending.length && pending[0].at <= t) pending.shift()!.run();
           frame(t, dt);
           if (t >= duration) finish();
         });
-        const timer = window.setTimeout(finish, (duration + 1) * 1000); // if rAF is throttled
+        const timer = window.setTimeout(finish, (duration * PACE + 1) * 1000); // if rAF is throttled
 
         function finish() {
           if (done) return;
@@ -84,7 +88,7 @@ export function openStage(className: string, label: string, badge: string): Stag
           setTimeout(() => {
             root.remove();
             resolve();
-          }, 180);
+          }, 240);
         }
         function onKey(e: KeyboardEvent) {
           if (performance.now() - started < SKIP_GUARD_MS || e.key === "Tab") return;
