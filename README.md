@@ -25,6 +25,8 @@ All the pixel art is drawn in code on low-resolution canvases (`src/pixel/`), wi
 
 - **Grounds** (`ground.ts`): one stadium per pyramid level, from a floodlit double-tier bowl to a wet park with a dog. The page background shows the ground for your current depth.
 - **Replays** (`cutscene.ts`): after each round a short goal plays, matched to the emoji grid. 🟩 is a tap-in, 🟧 a curler, 🟥 an overhead-kick worldie with fireworks, and ⬛ a shot off the bar. Dropping a division adds a dig down through the turf to the next ground. Click or press any key to skip; they're skipped entirely with reduced motion.
+- **Full time** (`fulltime.ts`): after round seven, the referee blows up, your total counts in, and the division you finished in gets a send-off to match: polite applause near the top, fireworks in non-league. It can be rewatched from the results screen.
+- **Sound** (`src/sound.ts`): whistle, kick, net, crowd, groans, fireworks and 8-bit jingles, all synthesised with the Web Audio API (no audio files). Off by default; the speaker button in the corner turns it on and the choice is remembered.
 
 ## Data
 

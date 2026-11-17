@@ -80,6 +80,7 @@ body::after {
 /* Notched pixel border: four offset shadows leave the corners out. */
 .panel,
 .btn,
+.sound-toggle,
 .board,
 .options,
 .notice,
@@ -217,10 +218,12 @@ body::after {
 
 .masthead {
   margin-bottom: 24px;
+  padding-right: 48px; /* room for the sound toggle */
 }
 .wordmark {
   margin: 0;
-  font: 400 clamp(3.5rem, 15vw, 7.5rem) / 0.85 var(--display);
+  white-space: nowrap;
+  font: 400 clamp(3.25rem, 13.5vw, 7.5rem) / 0.85 var(--display);
   text-transform: uppercase;
   letter-spacing: 0.02em;
   color: var(--flood);
@@ -375,6 +378,67 @@ body:not([data-screen="intro"]) .tagline {
 .btn--big {
   padding: 18px 30px 19px;
   font-size: 1.875rem;
+}
+.btn--quiet {
+  --edge: var(--chalk-dim);
+  margin-top: 8px;
+  padding: 10px 16px 11px;
+  background: transparent;
+  color: var(--chalk);
+  font-size: 1.25rem;
+}
+.btn--quiet:hover {
+  background: rgb(241 239 228 / 0.08);
+}
+
+/* ------------------------------------------------------------ sound toggle */
+
+.sound-toggle {
+  --edge: var(--ink);
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 0;
+  background: #0a140f;
+  color: var(--chalk-dim);
+  font: 400 1.125rem/1 var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.sound-toggle svg {
+  width: 22px;
+  height: 18px;
+}
+.sound-toggle__waves,
+.sound-toggle.is-on .sound-toggle__mute {
+  display: none;
+}
+.sound-toggle.is-on .sound-toggle__waves {
+  display: inline;
+}
+.sound-toggle.is-on {
+  color: var(--flood);
+}
+.sound-toggle__label {
+  display: none;
+}
+/* During a cutscene, tuck the toggle above the skip hint, out of the scoreboard's way. */
+body:has(.cutscene) .sound-toggle {
+  top: auto;
+  bottom: 52px;
+}
+body:has(.cutscene) .sound-toggle__label {
+  display: none;
+}
+.sound-toggle:focus-visible {
+  outline: 3px solid var(--flood);
+  outline-offset: 6px;
 }
 
 /* ------------------------------------------------------------------ round */
@@ -829,6 +893,95 @@ body:not([data-screen="intro"]) .tagline {
   animation: blink 1.2s steps(2) infinite;
 }
 
+.cutscene__badge {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  margin: 0;
+  padding: 2px 8px;
+  background: rgb(0 0 0 / 0.6);
+  font-size: 1.0625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+.cutscene__badge::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  background: var(--red);
+  animation: blink 1s steps(2) infinite;
+}
+
+.cutscene__level,
+.cutscene__verdict {
+  width: fit-content;
+  margin: 0;
+  opacity: 0;
+}
+.cutscene__level {
+  margin-top: 12px;
+  font: 400 clamp(2.25rem, 7vw, 4.25rem) / 0.9 var(--display);
+  text-transform: uppercase;
+  color: var(--flood);
+  text-shadow: 3px 3px 0 var(--flood-deep), 6px 6px 0 rgb(0 0 0 / 0.6);
+}
+.cutscene__verdict {
+  margin-top: 6px;
+  padding: 2px 10px;
+  background: rgb(0 0 0 / 0.62);
+  font-size: clamp(1.25rem, 3vw, 1.75rem);
+}
+.show-level .cutscene__level {
+  animation: stamp 320ms steps(4) forwards;
+}
+.show-level .cutscene__verdict {
+  animation: appear 1ms 300ms forwards;
+}
+.cutscene--fulltime .cutscene__title {
+  color: var(--chalk);
+  text-shadow: 4px 4px 0 #3b3d3c, 8px 8px 0 rgb(0 0 0 / 0.6);
+}
+.cutscene--fulltime.show-title .cutscene__depth {
+  animation: none;
+}
+.cutscene--fulltime.show-count .cutscene__depth {
+  animation: appear 1ms forwards;
+}
+.cutscene__squares {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+.sq {
+  width: 22px;
+  height: 22px;
+  box-shadow: 3px 3px 0 0 rgb(0 0 0 / 0.6);
+  transform: scale(0);
+}
+.sq.is-on {
+  animation: pop 200ms steps(3) forwards;
+}
+.sq--tap {
+  background: var(--tap);
+}
+.sq--curler {
+  background: var(--curler);
+}
+.sq--worldie {
+  background: var(--worldie);
+}
+.sq--miss {
+  background: #0a0a0a;
+  outline: 2px solid #3b3d3c;
+  outline-offset: -2px;
+}
+@keyframes pop {
+  from { transform: scale(1.6); }
+  to { transform: scale(1); }
+}
+
 @keyframes blink {
   50% { opacity: 0.35; }
 }
@@ -881,6 +1034,19 @@ body:not([data-screen="intro"]) .tagline {
   .cutscene__hud {
     left: 48px;
     top: 40px;
+  }
+  .cutscene__badge {
+    left: 48px;
+    bottom: 24px;
+  }
+  .sound-toggle__label {
+    display: inline;
+  }
+  .masthead {
+    padding-right: 0;
+  }
+  .wordmark {
+    font-size: min(7.5rem, 9vw);
   }
   .cutscene__banner {
     left: 48px;

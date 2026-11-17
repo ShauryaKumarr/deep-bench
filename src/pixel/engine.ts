@@ -65,6 +65,20 @@ export function transform(src: HTMLCanvasElement, sx = 1, sy = 1, quarter = 0): 
   return c;
 }
 
+/** Adds a 1px outline around a sprite's opaque pixels. The result is 2px wider and taller. */
+export function outline(src: HTMLCanvasElement, color: string): HTMLCanvasElement {
+  const { width: sw, height: sh } = src;
+  const alpha = src.getContext("2d")!.getImageData(0, 0, sw, sh).data;
+  const solid = (x: number, y: number) => x >= 0 && y >= 0 && x < sw && y < sh && alpha[(y * sw + x) * 4 + 3] > 0;
+  const [c, ctx] = makeCanvas(sw + 2, sh + 2);
+  ctx.fillStyle = color;
+  for (let y = -1; y <= sh; y++)
+    for (let x = -1; x <= sw; x++)
+      if (!solid(x, y) && (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1))) ctx.fillRect(x + 1, y + 1, 1, 1);
+  ctx.drawImage(src, 1, 1);
+  return c;
+}
+
 export function rect(ctx: Ctx, x: number, y: number, w: number, h: number, color: string) {
   ctx.fillStyle = color;
   ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));

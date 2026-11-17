@@ -6,6 +6,7 @@ import { attachAutocomplete } from "./autocomplete";
 import { loadDay, loadPlayers, todayKey, type Day, type Player } from "./data";
 import { createBackdrop } from "./pixel/backdrop";
 import { playCutscene } from "./pixel/cutscene";
+import { playFullTime } from "./pixel/fulltime";
 import type { Mood } from "./pixel/ground";
 import { createPyramid } from "./pyramid";
 import {
@@ -20,6 +21,7 @@ import {
   tierFor,
   type Tier,
 } from "./scoring";
+import { onSoundChange, setSound, sfx, soundOn } from "./sound";
 import * as store from "./storage";
 
 const FIRST_DAY = "2026-11-17";
@@ -67,8 +69,27 @@ const MOOD_AFTER: Record<Tier, Mood> = { miss: "groan", tap: "cheer", curler: "c
 function settle(mood: Mood = "idle") {
   const total = store.total(state());
   pyramid.set(total);
-  backdrop.set(levelIndex(total), mood);
+  backdrop.set(levelIndex(total), total, mood);
 }
+
+// Sound toggle: off until the player asks for it.
+const soundButton = document.getElementById("sound") as HTMLButtonElement;
+const soundLabel = soundButton.querySelector(".sound-toggle__label")!;
+const showSound = (on: boolean) => {
+  soundButton.setAttribute("aria-pressed", String(on));
+  soundButton.classList.toggle("is-on", on);
+  soundLabel.textContent = on ? "Sound on" : "Sound off";
+};
+showSound(soundOn());
+onSoundChange(showSound);
+soundButton.addEventListener("click", () => {
+  setSound(!soundOn());
+  if (soundOn()) sfx.fanfare([523, 784], 0.08);
+});
+// A little blip on every button press.
+screen.addEventListener("click", (e) => {
+  if ((e.target as Element).closest(".btn")) sfx.blip(988);
+});
 
 function grid(): string {
   return Array.from({ length: ROUNDS }, (_, i) => {
@@ -198,6 +219,7 @@ function playRound(i: number) {
       tier,
       depth: depth ?? 0,
       name: pick === null ? null : players[pick].name,
+      before,
       fromLevel: levelIndex(before),
       toLevel: levelIndex(after),
     });
@@ -213,6 +235,7 @@ function playRound(i: number) {
       board.setAttribute("aria-label", `${left} seconds left`);
       board.classList.toggle("is-low", left <= 5);
       if (left === 10 || left === 5) status.textContent = `${left} seconds left`;
+      if (left > 0 && left <= 5) sfx.tick(left <= 3);
     }
     if (left === 0) finish(null);
   }, 100);
@@ -225,6 +248,7 @@ function playRound(i: number) {
     guessed.add(index);
     wrong.prepend(h("li", {}, players[index].name));
     status.textContent = `${players[index].name} doesn’t fit. Keep going.`;
+    sfx.bonk();
     input.classList.remove("is-wrong");
     void input.offsetWidth; // restart the shake
     input.classList.add("is-wrong");
@@ -251,7 +275,12 @@ function reveal(i: number) {
   const last = i === ROUNDS - 1;
 
   const next = h("button", { class: "btn", type: "button" }, last ? "Full time: results ▶" : `Next: round ${i + 2} ▶`);
-  next.addEventListener("click", () => (last ? results() : playRound(i + 1)));
+  next.addEventListener("click", async () => {
+    if (!last) return playRound(i + 1);
+    next.disabled = true;
+    await fullTime();
+    results();
+  });
 
   show(
     "reveal",
@@ -280,6 +309,11 @@ function reveal(i: number) {
     next,
   );
   next.focus({ preventScroll: true });
+}
+
+function fullTime() {
+  const total = store.total(state());
+  return playFullTime({ total, level: levelIndex(total), depths: state().rounds.map((r) => r?.depth ?? null) });
 }
 
 function shareText(totalDepth: number): string {
@@ -331,6 +365,11 @@ function results() {
   updateCountdown();
 
   const stat = (label: string, value: string) => h("div", { class: "stat" }, h("dt", {}, label), h("dd", {}, value));
+  const rewatch = h("button", { class: "btn btn--quiet", type: "button" }, "Watch full time ▶");
+  rewatch.addEventListener("click", async () => {
+    await fullTime();
+    rewatch.focus({ preventScroll: true });
+  });
 
   show(
     "results",
@@ -367,6 +406,7 @@ function results() {
         stat("Average", metres(st.average)),
       ),
       h("p", { class: "small" }, "Next team sheet in ", countdown),
+      rewatch,
     ),
   );
   share.focus({ preventScroll: true });
