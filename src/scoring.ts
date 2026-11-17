@@ -34,9 +34,29 @@ export function levelFor(total: number): Level {
   return level;
 }
 
+export function levelIndex(total: number): number {
+  return LEVELS.indexOf(levelFor(total));
+}
+
+/** How good a round was. Also picks the replay. */
+export type Tier = "miss" | "tap" | "curler" | "worldie";
+
+export function tierFor(depth: number | null): Tier {
+  if (depth === null) return "miss";
+  if (depth < 60) return "tap";
+  if (depth < 85) return "curler";
+  return "worldie";
+}
+
+export const TIER_LABEL: Record<Tier, string> = {
+  miss: "Miss",
+  tap: "Tap-in",
+  curler: "Curler",
+  worldie: "Worldie",
+};
+
+const SQUARES: Record<Tier, string> = { miss: "⬛", tap: "🟩", curler: "🟧", worldie: "🟥" };
+
 export function square(depth: number | null): string {
-  if (depth === null) return "⬛";
-  if (depth < 60) return "🟩";
-  if (depth < 85) return "🟧";
-  return "🟥";
+  return SQUARES[tierFor(depth)];
 }

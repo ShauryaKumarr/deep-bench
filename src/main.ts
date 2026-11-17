@@ -1,14 +1,25 @@
-import "@fontsource/big-shoulders-display/700";
-import "@fontsource/big-shoulders-display/800";
-import "@fontsource/barlow-semi-condensed/400";
-import "@fontsource/barlow-semi-condensed/500";
-import "@fontsource/barlow-semi-condensed/600";
+import "@fontsource/jersey-10/400";
+import "@fontsource/vt323/400";
 import "./style.css";
 
 import { attachAutocomplete } from "./autocomplete";
 import { loadDay, loadPlayers, todayKey, type Day, type Player } from "./data";
+import { createBackdrop } from "./pixel/backdrop";
+import { playCutscene } from "./pixel/cutscene";
+import type { Mood } from "./pixel/ground";
 import { createPyramid } from "./pyramid";
-import { MAX_TOTAL, ROUNDS, ROUND_SECONDS, depthFor, levelFor, square } from "./scoring";
+import {
+  MAX_TOTAL,
+  ROUNDS,
+  ROUND_SECONDS,
+  TIER_LABEL,
+  depthFor,
+  levelFor,
+  levelIndex,
+  square,
+  tierFor,
+  type Tier,
+} from "./scoring";
 import * as store from "./storage";
 
 const FIRST_DAY = "2026-11-17";
@@ -16,6 +27,7 @@ const FIRST_DAY = "2026-11-17";
 const screen = document.getElementById("screen")!;
 const dayline = document.getElementById("dayline")!;
 const pyramid = createPyramid(document.getElementById("pyramid")!);
+const backdrop = createBackdrop(document.getElementById("backdrop") as HTMLCanvasElement);
 
 let players: Player[] = [];
 let day: Day;
@@ -36,14 +48,27 @@ function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
-function show(...children: Child[]) {
+function show(name: string, ...children: Child[]) {
+  document.body.dataset.screen = name;
   screen.replaceChildren(...children.filter((c): c is Node | string => !!c));
+  scrollTo(0, 0);
 }
+
+const panel = (...children: Child[]) => h("div", { class: "panel" }, ...children);
+const chip = (tier: Tier, text: string = TIER_LABEL[tier]) => h("span", { class: `chip chip--${tier}` }, text);
 
 const state = () => store.getDay(date);
 const metres = (n: number) => `${n}m`;
 const dayNumber = () =>
   Math.round((Date.parse(`${date}T12:00:00Z`) - Date.parse(`${FIRST_DAY}T12:00:00Z`)) / 86_400_000) + 1;
+
+const MOOD_AFTER: Record<Tier, Mood> = { miss: "groan", tap: "cheer", curler: "cheer", worldie: "wild" };
+
+function settle(mood: Mood = "idle") {
+  const total = store.total(state());
+  pyramid.set(total);
+  backdrop.set(levelIndex(total), mood);
+}
 
 function grid(): string {
   return Array.from({ length: ROUNDS }, (_, i) => {
@@ -57,27 +82,38 @@ function grid(): string {
 
 function intro(forfeited: number | null) {
   const done = state().rounds.filter(Boolean).length;
-  const button = h("button", { class: "btn", type: "button" }, done ? `Continue: round ${done + 1}` : "Kick off");
+  const button = h("button", { class: "btn btn--big", type: "button" }, done ? `Continue: round ${done + 1} ▶` : "Kick off ▶");
   button.addEventListener("click", () => playRound(done));
 
   show(
+    "intro",
     forfeited !== null &&
       h("p", { class: "notice" }, `Round ${forfeited + 1} counted as a miss: the page was left while the clock was running.`),
-    h("h2", { class: "title" }, done ? "Back on the pitch" : "Today’s team sheet"),
-    done
-      ? h("p", { class: "grid", "aria-label": `${done} of ${ROUNDS} rounds played` }, grid())
-      : h(
-          "ol",
-          { class: "rules" },
-          h("li", {}, `${ROUNDS} prompts, ${ROUND_SECONDS} seconds each.`),
-          h("li", {}, "Name any player who fits. Wrong guesses cost nothing: keep going until the clock runs out."),
-          h("li", {}, "The more obscure your answer, the deeper you sink. The best-known answer is worth 10m, the least known 100m."),
-          h("li", {}, `Go as deep as ${MAX_TOTAL}m, from the Premier League to Sunday league.`),
-        ),
-    h("p", { class: "small" }, "Leaving the page mid-round counts that round as a miss."),
+    panel(
+      h("h2", { class: "title" }, done ? "Back on the pitch" : "Today’s team sheet"),
+      done
+        ? h("p", { class: "grid", "aria-label": `${done} of ${ROUNDS} rounds played` }, grid())
+        : h(
+            "ol",
+            { class: "rules" },
+            h("li", {}, `${ROUNDS} prompts, ${ROUND_SECONDS} seconds each.`),
+            h("li", {}, "Name any player who fits. Wrong guesses cost nothing, so keep going until the clock runs out."),
+            h("li", {}, "The more obscure your answer, the deeper you sink: 10m for the best known, 100m for the least."),
+            h("li", {}, `Dig as deep as ${MAX_TOTAL}m, from the Premier League to Sunday league.`),
+          ),
+      h(
+        "p",
+        { class: "chips", "aria-label": "Scoring" },
+        chip("tap", "Tap-in · under 60m"),
+        chip("curler", "Curler · 60–84m"),
+        chip("worldie", "Worldie · 85m+"),
+        chip("miss", "Miss · 0m"),
+      ),
+      h("p", { class: "small" }, "Leaving the page mid-round counts that round as a miss."),
+    ),
     button,
   );
-  button.focus();
+  button.focus({ preventScroll: true });
 }
 
 function playRound(i: number) {
@@ -88,6 +124,7 @@ function playRound(i: number) {
   for (const a of prompt.answers) if (!byName.has(players[a].key)) byName.set(players[a].key, a);
 
   store.startRound(date, i);
+  settle();
 
   const digits = h("span", { class: "board__digits" }, String(ROUND_SECONDS));
   const board = h(
@@ -95,7 +132,6 @@ function playRound(i: number) {
     { class: "board", role: "timer", "aria-label": `${ROUND_SECONDS} seconds left` },
     h("span", { class: "board__plus", "aria-hidden": "true" }, "+"),
     digits,
-    h("span", { class: "board__unit", "aria-hidden": "true" }, "sec"),
   );
   const input = h("input", {
     class: "guess__input",
@@ -108,6 +144,7 @@ function playRound(i: number) {
     "aria-autocomplete": "list",
     "aria-controls": "options",
     "aria-expanded": "false",
+    "aria-describedby": "prompt",
     placeholder: "Start typing a player…",
   });
   const listbox = h("ul", { class: "options", id: "options", role: "listbox", "aria-label": "Players" });
@@ -116,40 +153,55 @@ function playRound(i: number) {
   const status = h("p", { class: "visually-hidden", "aria-live": "assertive" });
 
   show(
-    h(
-      "div",
-      { class: "round__head" },
-      h("p", { class: "eyebrow" }, `Round ${i + 1} of ${ROUNDS}`),
-      h("div", { class: "board-wrap" }, board, h("span", { class: "board__handle", "aria-hidden": "true" })),
+    "round",
+    panel(
+      h(
+        "div",
+        { class: "round__head" },
+        h(
+          "div",
+          {},
+          h("p", { class: "eyebrow" }, `Round ${i + 1} of ${ROUNDS}`),
+          h("p", { class: "pips", "aria-hidden": "true" }, grid()),
+        ),
+        h("div", { class: "board-wrap" }, board, h("span", { class: "board__handle", "aria-hidden": "true" })),
+      ),
+      h("h2", { class: "prompt", id: "prompt" }, prompt.text),
+      h("div", { class: "guess" }, h("label", { class: "visually-hidden", for: "guess" }, "Your answer"), input, listbox),
+      wrong,
     ),
-    h("h2", { class: "prompt", id: "prompt" }, prompt.text),
-    h(
-      "div",
-      { class: "guess" },
-      h("label", { class: "visually-hidden", for: "guess" }, "Your answer"),
-      input,
-      listbox,
-    ),
-    wrong,
     status,
   );
-  input.setAttribute("aria-describedby", "prompt");
+  input.focus({ preventScroll: true });
   input.addEventListener("input", () => input.classList.remove("is-wrong"));
-  input.focus();
 
   const guessed = new Set<number>();
   const deadline = performance.now() + ROUND_SECONDS * 1000;
   let finished = false;
   let lastShown = ROUND_SECONDS;
 
-  const finish = (pick: number | null) => {
+  const finish = async (pick: number | null) => {
     if (finished) return;
     finished = true;
     clearInterval(tick);
     ac.close();
+    input.disabled = true;
+    input.blur(); // drop the on-screen keyboard before the replay
+
+    const before = store.total(state());
     const depth = pick === null ? null : depthFor(prompt.answers.indexOf(pick), prompt.answers.length);
     store.finishRound(date, i, { pick, depth });
-    pyramid.set(store.total(state()));
+    const after = store.total(state());
+
+    const tier = tierFor(depth);
+    await playCutscene({
+      tier,
+      depth: depth ?? 0,
+      name: pick === null ? null : players[pick].name,
+      fromLevel: levelIndex(before),
+      toLevel: levelIndex(after),
+    });
+    settle(MOOD_AFTER[tier]);
     reveal(i);
   };
 
@@ -168,7 +220,7 @@ function playRound(i: number) {
   const ac = attachAutocomplete(input, listbox, players, (index) => {
     if (finished) return;
     const hit = answers.has(index) ? index : byName.get(players[index].key);
-    if (hit !== undefined) return finish(hit);
+    if (hit !== undefined) return void finish(hit);
     if (guessed.has(index)) return;
     guessed.add(index);
     wrong.prepend(h("li", {}, players[index].name));
@@ -192,40 +244,42 @@ function answerRow(index: number, rank: number, count: number, pick: number | nu
 function reveal(i: number) {
   const prompt = day.prompts[i];
   const { pick, depth } = state().rounds[i];
+  const tier = tierFor(depth);
   const n = prompt.answers.length;
   const shallow = prompt.answers[0];
   const deep = prompt.answers[n - 1];
   const last = i === ROUNDS - 1;
 
-  const next = h("button", { class: "btn", type: "button" }, last ? "Full time: see results" : `Next: round ${i + 2}`);
+  const next = h("button", { class: "btn", type: "button" }, last ? "Full time: results ▶" : `Next: round ${i + 2} ▶`);
   next.addEventListener("click", () => (last ? results() : playRound(i + 1)));
 
   show(
-    h("p", { class: "eyebrow" }, `Round ${i + 1} of ${ROUNDS}`),
-    h("h2", { class: "prompt prompt--small" }, prompt.text),
-    pick === null
-      ? h("p", { class: "verdict verdict--miss" }, h("span", { class: "verdict__label" }, "Missed"), h("span", { class: "verdict__depth" }, "0m"))
-      : h(
-          "p",
-          { class: "verdict" },
-          h("span", { class: "verdict__label" }, players[pick].name),
-          h("span", { class: "verdict__depth" }, metres(depth ?? 0)),
-        ),
-    h(
-      "dl",
-      { class: "extremes" },
-      h("div", {}, h("dt", {}, "Shallowest"), h("dd", {}, players[shallow].name, h("span", {}, ` ${metres(depthFor(0, n))}`))),
-      h("div", {}, h("dt", {}, "Deepest"), h("dd", {}, players[deep].name, h("span", {}, ` ${metres(depthFor(n - 1, n))}`))),
+    "reveal",
+    panel(
+      h("p", { class: "eyebrow" }, `Round ${i + 1} of ${ROUNDS}`),
+      h("h2", { class: "prompt prompt--small" }, prompt.text),
+      h(
+        "div",
+        { class: `verdict verdict--${tier}` },
+        h("div", {}, chip(tier), h("p", { class: "verdict__label" }, pick === null ? "No answer" : players[pick].name)),
+        h("p", { class: "verdict__depth" }, metres(depth ?? 0)),
+      ),
+      h(
+        "dl",
+        { class: "extremes" },
+        h("div", {}, h("dt", {}, "Shallowest"), h("dd", {}, players[shallow].name, h("span", {}, ` ${metres(depthFor(0, n))}`))),
+        h("div", {}, h("dt", {}, "Deepest"), h("dd", {}, players[deep].name, h("span", {}, ` ${metres(depthFor(n - 1, n))}`))),
+      ),
+      h(
+        "details",
+        { class: "answers" },
+        h("summary", {}, `All ${n} valid answers`),
+        h("ol", {}, ...prompt.answers.map((a, rank) => answerRow(a, rank, n, pick))),
+      ),
     ),
     next,
-    h(
-      "details",
-      { class: "answers" },
-      h("summary", {}, `All ${n} valid answers`),
-      h("ol", {}, ...prompt.answers.map((a, rank) => answerRow(a, rank, n, pick))),
-    ),
   );
-  next.focus();
+  next.focus({ preventScroll: true });
 }
 
 function shareText(totalDepth: number): string {
@@ -242,6 +296,7 @@ function results() {
   const totalDepth = store.total(s);
   const level = levelFor(totalDepth);
   const st = store.stats(date);
+  settle("cheer");
 
   const share = h("button", { class: "btn", type: "button" }, "Share result");
   const shared = h("p", { class: "small", "aria-live": "polite" });
@@ -278,48 +333,53 @@ function results() {
   const stat = (label: string, value: string) => h("div", { class: "stat" }, h("dt", {}, label), h("dd", {}, value));
 
   show(
-    h("p", { class: "eyebrow" }, "Full time"),
-    h("p", { class: "total" }, metres(totalDepth)),
-    h("h2", { class: "title" }, level.name),
-    h("pre", { class: "share-preview", "aria-label": "Your result" }, shareText(totalDepth)),
-    share,
-    shared,
-    h(
-      "ol",
-      { class: "summary" },
-      ...day.prompts.map((p, i) => {
-        const r = s.rounds[i];
-        return h(
-          "li",
-          {},
-          h("span", { class: "summary__sq", "aria-hidden": "true" }, square(r?.depth ?? null)),
-          h("span", { class: "summary__text" }, p.text, h("br"), h("strong", {}, r?.pick != null ? players[r.pick].name : "Missed")),
-          h("span", { class: "summary__depth" }, metres(r?.depth ?? 0)),
-        );
-      }),
+    "results",
+    panel(
+      h("p", { class: "eyebrow" }, "Full time"),
+      h("p", { class: "total" }, metres(totalDepth)),
+      h("h2", { class: "title" }, level.name),
+      h("pre", { class: "share-preview", "aria-label": "Your result" }, shareText(totalDepth)),
+      share,
+      shared,
     ),
-    h(
-      "dl",
-      { class: "stats" },
-      stat("Played", String(st.played)),
-      stat("Streak", String(st.streak)),
-      stat("Best streak", String(st.bestStreak)),
-      stat("Deepest", metres(st.best)),
-      stat("Average", metres(st.average)),
+    panel(
+      h(
+        "ol",
+        { class: "summary" },
+        ...day.prompts.map((p, i) => {
+          const r = s.rounds[i];
+          return h(
+            "li",
+            {},
+            h("span", { class: "summary__sq", "aria-hidden": "true" }, square(r?.depth ?? null)),
+            h("span", { class: "summary__text" }, p.text, h("br"), h("strong", {}, r?.pick != null ? players[r.pick].name : "Missed")),
+            h("span", { class: "summary__depth" }, metres(r?.depth ?? 0)),
+          );
+        }),
+      ),
+      h(
+        "dl",
+        { class: "stats" },
+        stat("Played", String(st.played)),
+        stat("Streak", String(st.streak)),
+        stat("Best streak", String(st.bestStreak)),
+        stat("Deepest", metres(st.best)),
+        stat("Average", metres(st.average)),
+      ),
+      h("p", { class: "small" }, "Next team sheet in ", countdown),
     ),
-    h("p", { class: "small" }, "Next team sheet in ", countdown),
   );
-  share.focus();
+  share.focus({ preventScroll: true });
 }
 
 function failure(message: string) {
-  show(h("h2", { class: "title" }, "Match postponed"), h("p", {}, message));
+  show("failure", panel(h("h2", { class: "title" }, "Match postponed"), h("p", {}, message)));
 }
 
 // ---------------------------------------------------------------------------
 
 async function boot() {
-  show(h("p", { class: "small" }, "Warming up…"));
+  show("loading", h("p", { class: "small loading" }, "Warming up…"));
   try {
     const [p, d] = await Promise.all([loadPlayers(), loadDay(date)]);
     players = p;
@@ -328,14 +388,14 @@ async function boot() {
   } catch {
     return failure("The data didn’t load. Check your connection and reload.");
   }
-  dayline.textContent = `#${dayNumber()} · ${new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
+  dayline.textContent = `Day ${dayNumber()} · ${new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
     weekday: "long",
     day: "numeric",
     month: "long",
   })}`;
 
   const forfeited = store.forfeitAbandoned(date);
-  pyramid.set(store.total(state()));
+  settle();
   if (store.isComplete(state())) results();
   else intro(forfeited);
 }

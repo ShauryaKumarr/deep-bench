@@ -1,5 +1,11 @@
 import { LEVELS, MAX_TOTAL, levelFor } from "./scoring";
 
+// A 7 × 7 pixel football.
+const BALL_SVG = `<svg class="pyramid__ball" viewBox="0 0 7 7" shape-rendering="crispEdges" aria-hidden="true">
+  <path fill="#F1EFE4" d="M2 0h3v1h1v1h1v3h-1v1h-1v1h-3v-1h-1v-1h-1v-3h1v-1h1z"/>
+  <path fill="#10241a" d="M3 2h1v1h1v1h-1v1h-1v-1h-1v-1h1zM0 3h1v1h-1zM6 3h1v1h-1zM3 0h1v1h-1zM3 6h1v1h-1z"/>
+</svg>`;
+
 /** The pyramid strip down the left edge. The marker sinks as depth grows. */
 export function createPyramid(root: HTMLElement) {
   const list = document.createElement("ol");
@@ -22,8 +28,8 @@ export function createPyramid(root: HTMLElement) {
 
   const marker = document.createElement("div");
   marker.className = "pyramid__marker";
-  marker.innerHTML = `<span class="pyramid__depth">0m</span>`;
-  const depthEl = marker.firstElementChild as HTMLElement;
+  marker.innerHTML = `${BALL_SVG}<span class="pyramid__depth">0m</span>`;
+  const depthEl = marker.querySelector(".pyramid__depth") as HTMLElement;
 
   const live = document.createElement("p");
   live.className = "visually-hidden";
