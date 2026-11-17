@@ -47,6 +47,12 @@ export function getDay(date: string): DayState {
   return (store.days[date] ??= { rounds: [], active: null });
 }
 
+/** Forgets one day's progress, so it can be played again. */
+export function resetDay(date: string) {
+  delete store.days[date];
+  write();
+}
+
 export function startRound(date: string, round: number) {
   getDay(date).active = round;
   write();

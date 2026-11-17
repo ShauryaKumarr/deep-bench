@@ -434,6 +434,12 @@ async function boot() {
     month: "long",
   })}`;
 
+  // Local dev only: /?reset wipes today's progress so the day can be replayed.
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has("reset")) {
+    store.resetDay(date);
+    history.replaceState(null, "", location.pathname);
+  }
+
   const forfeited = store.forfeitAbandoned(date);
   settle();
   if (store.isComplete(state())) results();
