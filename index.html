@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1E4A34" />
+    <meta name="description" content="A daily football quiz. Seven prompts, 25 seconds each. Name the most obscure player you can and sink down the pyramid." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Deep Bench</title>
+  </head>
+  <body>
+    <a class="skip" href="#screen">Skip to game</a>
+    <div class="app">
+      <aside class="pyramid" id="pyramid" aria-label="Your depth in the football pyramid"></aside>
+      <main class="main">
+        <header class="masthead">
+          <h1 class="wordmark">Deep Bench</h1>
+          <p class="dayline" id="dayline"></p>
+        </header>
+        <section id="screen" class="screen" tabindex="-1" aria-live="polite"></section>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
