@@ -7,7 +7,7 @@ score per player, generates prompts and writes:
   public/data/players.json          every player, ordered by fame (most famous first)
   public/data/days/YYYY-MM-DD.json  7 prompts per day for DAYS days
 
-Usage: python3 scripts/build_data.py [--start YYYY-MM-DD] [--days 730]
+Usage: python3 scripts/build_data.py [--start YYYY-MM-DD] [--days 1460]
 """
 
 from __future__ import annotations
@@ -339,7 +339,7 @@ def schedule(prompts, start: dt.date, days: int):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default="2026-11-17")
-    ap.add_argument("--days", type=int, default=730)
+    ap.add_argument("--days", type=int, default=1460)
     args = ap.parse_args()
 
     tm = ensure_repo(TM_REPO, "transfermarkt-data")
