@@ -42,19 +42,33 @@ The script shallow-clones both source repositories into `.cache/` (skipping thei
 - `players.json`: every player, ordered from most to least famous, with nationality, position group and first/last season for disambiguation.
 - `days/YYYY-MM-DD.json`: seven prompts per day, each with its valid answers ordered by fame.
 
-The schedule is random but seeded, so asking for more days always reproduces the existing ones and adds new days after them. Keep `--start` at 2026-11-17 when extending. Re-cloning the sources (deleting `.cache/`) can reorder players and change every puzzle, so only do that to rebuild everything.
+Days up to today are never rewritten, because people may already have played them (`--keep-through YYYY-MM-DD` moves that line; `--keep-through none` rebuilds everything). Later days are seeded per date, so re-running reproduces them. Keep `--start` at 2026-11-17. Re-cloning the sources (deleting `.cache/`) can reorder players and break published days, so only do that for a full rebuild.
+
+Honours come from a separate script, because they need the network:
+
+```sh
+python3 scripts/fetch_honours.py   # writes scripts/honours.json; re-run after a tournament
+```
 
 How it works:
 
 - **Clubs.** A player played for a club if they appear in that club's transfer records (the `club` column), in or out, loans included. Club name variants are merged ("Parma FC", "AC Parma" and "Parma Calcio 1913" are all Parma) and shortened for display.
 - **Fame** = 0.55 × log-scaled peak value + 0.45 × min(caps, 120) / 120. Peak value is the highest market value or transfer fee on record, with pre-2019 money scaled by 2^((2019 − year) / 5.5). Caps are senior international appearances; the source mixes youth sides in without naming them, so each nation's senior side is taken to be the team its players were capped for most in total.
-- **Prompts** use only the 60 most famous clubs, need 6 to 250 valid answers and at least two well-known ones (in the 1,500 most famous players), and never repeat within 150 days.
+- **Honours** (`scripts/honours.json`): World Cup, Euros, Copa América and Africa Cup of Nations winners are the winning nation's squad on each tournament's Wikipedia squads page. Champions League finals use the line-ups on each final's page, counting only players who played (starters, and substitutes who came on), which is why prompts say "played in a Champions League final win". Ballon d'Or winners come from Wikidata. Players are matched by their Transfermarkt ID on Wikidata, not by name.
+- **Prompts** come in five families, and each day mixes them: two classic (clubs, nationalities, positions, leagues), at least one honours, one transfer, and one international or career prompt. For example:
+  - Honours: *Won the World Cup and played in Serie A*, *A goalkeeper who played in a Champions League final win*, *Won the Ballon d'Or and the World Cup*
+  - Transfers: *Moved for a fee of €100m or more*, *Joined Juventus on a free transfer*, *Moved directly between Barcelona and Real Madrid*, *Went on loan from Chelsea to an Eredivisie club*
+  - International: *Won 100 or more caps and played in La Liga*, *Won exactly one international cap and played for Arsenal*
+  - Career: *Played in four of Europe's big five leagues*, *Played for 5 or more different Serie A clubs*, *Played in the Premier League and the Saudi Pro League*
+
+  Every prompt needs 6 to 250 valid answers and at least two well-known ones (in the 1,500 most famous players), uses only the 60 most famous clubs, and never repeats within 150 days.
 
 ## Data credits
 
 - [eordo/transfermarkt-data](https://github.com/eordo/transfermarkt-data): transfers for the Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Eredivisie, Süper Lig and Saudi Pro League, 1992–2025.
 - [salimt/football-datasets](https://github.com/salimt/football-datasets): `player_market_value.csv` and `player_national_performances.csv`.
-- Both are scraped from [Transfermarkt](https://www.transfermarkt.com/). Deep Bench is an unofficial fan project, not affiliated with or endorsed by Transfermarkt or any club or league.
+- Honours: [Wikipedia](https://en.wikipedia.org/) tournament squad and final pages (CC BY-SA), and [Wikidata](https://www.wikidata.org/) (CC0) for the Ballon d'Or and Transfermarkt IDs.
+- The transfer and player data are scraped from [Transfermarkt](https://www.transfermarkt.com/). Deep Bench is an unofficial fan project, not affiliated with or endorsed by Transfermarkt or any club or league.
 
 Fonts: [Jersey 10](https://fonts.google.com/specimen/Jersey+10) and [VT323](https://fonts.google.com/specimen/VT323), both under the SIL Open Font License, self-hosted via [Fontsource](https://fontsource.org/).
 

@@ -241,8 +241,9 @@ def compute_players(tr: pd.DataFrame, mv: pd.DataFrame, nat: pd.DataFrame) -> pd
     nat = nat.merge(players[["nation"]], left_on="player_id", right_index=True)
     totals = nat.groupby(["nation", "team_id"])["matches"].sum().reset_index()
     senior = set(totals.sort_values("matches").groupby("nation").tail(1)["team_id"])
-    caps = nat[nat["team_id"].isin(senior)].groupby("player_id")["matches"].max()
-    players["caps"] = caps.reindex(players.index).fillna(0).astype(int)
+    best = nat[nat["team_id"].isin(senior)].sort_values(["matches", "goals"]).groupby("player_id").tail(1).set_index("player_id")
+    players["caps"] = best["matches"].reindex(players.index).fillna(0).astype(int)
+    players["intl_goals"] = best["goals"].reindex(players.index).fillna(0).astype(int)
 
     # Log scale from 50k (a squad player) to the biggest value in the data.
     hi = players["peak"].max()
@@ -250,6 +251,48 @@ def compute_players(tr: pd.DataFrame, mv: pd.DataFrame, nat: pd.DataFrame) -> pd
     players = players.sort_values(["fame", "peak"], ascending=False)
     players["idx"] = range(len(players))
     return players
+
+
+HONOURS = os.path.join(ROOT, "scripts", "honours.json")
+
+# How each honour reads in a prompt. "won" honours take "and played for/in";
+# the final-line-up ones read better as "played in ... a final win".
+HONOUR_TEXT = {
+    "world_cup": "Won the World Cup",
+    "euros": "Won the Euros",
+    "copa_america": "Won the Copa América",
+    "afcon": "Won the Africa Cup of Nations",
+    "ballon_dor": "Won the Ballon d’Or",
+    "ucl_final_won": "Played in a Champions League final win",
+    "ucl_final_lost": "Played in a Champions League final defeat",
+}
+FINALS = {"ucl_final_won": "a Champions League final win", "ucl_final_lost": "a Champions League final defeat"}
+BIG_FIVE = ["Premier League", "Laliga", "Serie A", "Bundesliga", "Ligue 1"]
+NOT_A_CLUB = {"Without Club", "Retired", "Unknown", "Career break", ""}
+YOUTH = re.compile(r"\b(U\d{2}|B|II|Youth|Academy|Reserves|Primavera|Juvenil)\b")
+
+
+def league_club(lg: str) -> str:
+    """'a Serie A club', 'an Eredivisie club'."""
+    name = LEAGUES[lg][0]
+    return f"{'an' if name[0] in 'AEIOU' else 'a'} {name} club"
+
+
+def honour_with(h: str, clause: str) -> str:
+    """Joins an honour to 'played for Chelsea' / 'played in Serie A'."""
+    if h in FINALS:
+        return f"{clause[0].upper()}{clause[1:]} and in {FINALS[h]}"
+    return f"{HONOUR_TEXT[h]} and {clause}"
+
+
+def load_honours(players: pd.DataFrame) -> dict[str, set[int]]:
+    if not os.path.exists(HONOURS):
+        print("No scripts/honours.json; run scripts/fetch_honours.py for honours prompts.")
+        return {}
+    with open(HONOURS, encoding="utf-8") as f:
+        raw = json.load(f)["honours"]
+    idx = players["idx"].to_dict()
+    return {k: {idx[p] for p in v if p in idx} for k, v in raw.items()}
 
 
 def build_prompts(tr: pd.DataFrame, players: pd.DataFrame):
@@ -272,67 +315,189 @@ def build_prompts(tr: pd.DataFrame, players: pd.DataFrame):
     fame = players.set_index("idx")["fame"].to_dict()
     club_fame = {c: sum(sorted((fame[i] for i in s), reverse=True)[:40]) for c, s in by_club.items()}
     top = sorted(club_fame, key=club_fame.get, reverse=True)[:TOP_CLUBS]
+    top_set = set(top)
     print("Top clubs:", ", ".join(top))
 
     prompts = []
 
-    def add(kind: str, key: str, text: str, answers: set[int], clubs=()):
-        n_known = len(answers & well_known)
+    def add(family: str, kind: str, text: str, answers: set[int], clubs=(), known_pool: set[int] = well_known):
+        n_known = len(answers & known_pool)
         if MIN_ANSWERS <= len(answers) <= MAX_ANSWERS and n_known >= MIN_WELL_KNOWN:
-            prompts.append({"kind": kind, "key": key, "text": text, "answers": sorted(answers),
+            prompts.append({"family": family, "kind": kind, "text": text, "answers": sorted(answers),
                             "known": n_known, "clubs": set(clubs)})
 
+    # ---- classic: clubs, nationalities, positions, leagues
     for a, b in combinations(top, 2):
         x, y = sorted([a, b])
-        add("pair", f"pair:{a}|{b}", f"Played for {x} and {y}", by_club[a] & by_club[b], (a, b))
+        add("classic", "pair", f"Played for {x} and {y}", by_club[a] & by_club[b], (a, b))
     for c in top:
         for n, s in by_nation.items():
-            add("nation", f"nation:{c}|{n}", f"Played for {c}, from {nation_phrase(n)}", by_club[c] & s, (c,))
+            add("classic", "nation", f"Played for {c}, from {nation_phrase(n)}", by_club[c] & s, (c,))
         for p, s in by_pos.items():
-            add("pos", f"pos:{c}|{p}", f"{POSITION_PHRASE[p]} who played for {c}", by_club[c] & s, (c,))
+            add("classic", "pos", f"{POSITION_PHRASE[p]} who played for {c}", by_club[c] & s, (c,))
     for lg, s in by_league.items():
         for n, ns in by_nation.items():
-            add("league", f"league:{lg}|{n}", f"A player from {nation_phrase(n)} who played in {LEAGUES[lg][1]}", s & ns)
+            add("classic", "league", f"A player from {nation_phrase(n)} who played in {LEAGUES[lg][1]}", s & ns)
 
-    counts = defaultdict(int)
+    # ---- honours: international trophies, Champions League finals, the Ballon d'Or
+    honours = load_honours(players)
+    for h, hs in honours.items():
+        add("honours", "honour", HONOUR_TEXT[h], hs)
+        for lg, s in by_league.items():
+            add("honours", "honour-league", honour_with(h, f"played in {LEAGUES[lg][1]}"), hs & s)
+        for c in top:
+            add("honours", "honour-club", honour_with(h, f"played for {c}"), hs & by_club[c], (c,))
+        for p, s in by_pos.items():
+            add("honours", "honour-pos", f"{POSITION_PHRASE[p]} who {HONOUR_TEXT[h][0].lower()}{HONOUR_TEXT[h][1:]}", hs & s)
+        if h in FINALS or h == "ballon_dor":
+            for n, s in by_nation.items():
+                add("honours", "honour-nation", f"{HONOUR_TEXT[h]}, from {nation_phrase(n)}", hs & s)
+    pairs = [
+        ("world_cup", "euros", "Won the World Cup and the Euros"),
+        ("world_cup", "ucl_final_won", "Won the World Cup and played in a Champions League final win"),
+        ("euros", "ucl_final_won", "Won the Euros and played in a Champions League final win"),
+        ("copa_america", "ucl_final_won", "Won the Copa América and played in a Champions League final win"),
+        ("afcon", "ucl_final_won", "Won the Africa Cup of Nations and played in a Champions League final win"),
+        ("ballon_dor", "world_cup", "Won the Ballon d’Or and the World Cup"),
+        ("ballon_dor", "ucl_final_won", "Won the Ballon d’Or and played in a Champions League final win"),
+        ("ucl_final_won", "ucl_final_lost", "Played in a Champions League final win and a final defeat"),
+        ("world_cup", "ucl_final_lost", "Won the World Cup but played in a Champions League final defeat"),
+    ]
+    for a, b, text in pairs:
+        if a in honours and b in honours:
+            add("honours", "honour-pair", text, honours[a] & honours[b])
+
+    # ---- transfers: fees, free transfers, loans, direct moves
+    moves = tr[tr["movement"] == "in"]
+    fee = moves["fee"].fillna(-1)
+    add("transfers", "fee", "Moved for a fee of €100m or more", {idx[p] for p in moves.loc[fee >= 100e6, "player_id"]})
+    for c in top:
+        at = moves[moves["club"] == c]
+        options = []
+        for million in (20, 30, 40, 50, 60):
+            ans = {idx[p] for p in at.loc[at["fee"].fillna(-1) >= million * 1e6, "player_id"]}
+            if MIN_ANSWERS <= len(ans) <= 40:
+                options.append((abs(len(ans) - 18), million, ans))
+        if options:  # one threshold per club, aiming for ~18 answers
+            _, million, ans = min(options)
+            add("transfers", "fee-club", f"Joined {c} for €{million}m or more", ans, (c,))
+        free = at[(at["fee"] == 0) & (at["is_loan"] == 0)]
+        free = free[~free["dealing_club"].fillna("").map(lambda d: d in {"Retired", "Unknown", "Career break"} or bool(YOUTH.search(d)))]
+        add("transfers", "free", f"Joined {c} on a free transfer", {idx[p] for p in free["player_id"]}, (c,))
+    deal = tr["dealing_club"].fillna("").map(club_name)
+    direct = tr[tr["club"].isin(top_set) & deal.isin(top_set) & (deal != tr["club"])]
+    pairs_seen: dict[tuple[str, str], set[int]] = defaultdict(set)
+    for pid, c, d in zip(direct["player_id"], direct["club"], deal[direct.index]):
+        pairs_seen[tuple(sorted((c, d)))].add(idx[pid])
+    for (a, b), ans in pairs_seen.items():
+        add("transfers", "direct", f"Moved directly between {a} and {b}", ans, (a, b))
+    loans = moves[(moves["is_loan"] == 1)]
+    loan_from = loans["dealing_club"].fillna("").map(club_name)
+    for c in top:
+        out_on_loan = loans[loan_from == c]
+        for lg, grp in out_on_loan.groupby("league"):
+            add("transfers", "loan", f"Went on loan from {c} to {league_club(lg)}", {idx[p] for p in grp["player_id"]}, (c,))
+
+    # ---- international: caps and goals
+    caps = players.set_index("idx")["caps"]
+    goals = players.set_index("idx")["intl_goals"]
+    centurions = set(caps[caps >= 100].index)
+    scorers = set(goals[goals >= 30].index)
+    one_cap = set(caps[caps == 1].index)
+    for lg, s in by_league.items():
+        add("international", "caps-league", f"Won 100 or more caps and played in {LEAGUES[lg][1]}", centurions & s)
+        add("international", "goals-league", f"Scored 30 or more international goals and played in {LEAGUES[lg][1]}", scorers & s)
+    for c in top:
+        add("international", "caps-club", f"Won 100 or more caps and played for {c}", centurions & by_club[c], (c,))
+        # One-cap wonders are obscure by nature, so "well known" is looser here.
+        add("international", "one-cap", f"Won exactly one international cap and played for {c}", one_cap & by_club[c], (c,),
+            known_pool=set(range(WELL_KNOWN_TOP_N * 2)))
+    for n, s in by_nation.items():
+        add("international", "caps-nation", f"Won 100 or more caps for {nation_phrase(n)}", centurions & s)
+        add("international", "goals-nation", f"Scored 30 or more goals for {nation_phrase(n)}", scorers & s)
+
+    # ---- career shape: big-five leagues, journeymen, league pairs
+    leagues_of = tr.groupby("player_id")["league"].agg(set)
+    add("career", "big-five", "Played in four of Europe’s big five leagues",
+        {idx[p] for p, ls in leagues_of.items() if len(ls & set(BIG_FIVE)) >= 4})
+    clubs_in = tr.groupby(["league", "player_id"])["club"].nunique()
+    for lg in by_league:
+        counts = clubs_in.loc[lg]
+        for n in range(3, 9):
+            ans = {idx[p] for p in counts[counts >= n].index}
+            if len(ans) <= MAX_ANSWERS:
+                add("career", "journeyman", f"Played for {n} or more different {LEAGUES[lg][0]} clubs", ans)
+                break
+    for a, b in combinations(sorted(by_league), 2):
+        add("career", "league-pair", f"Played in {LEAGUES[a][1]} and {LEAGUES[b][1]}", by_league[a] & by_league[b])
+    for a, b, c in combinations(sorted(by_league), 3):
+        add("career", "league-triple", f"Played in {LEAGUES[a][1]}, {LEAGUES[b][1]} and {LEAGUES[c][1]}",
+            by_league[a] & by_league[b] & by_league[c])
+    # Ages at signing.
+    age = moves["age"].fillna(-1)
+    for c in top:
+        young = moves[(moves["club"] == c) & (age >= 0) & (age <= 18)]
+        add("career", "teen", f"Joined {c} aged 18 or younger", {idx[p] for p in young["player_id"]}, (c,))
+    for lg, grp in moves[age >= 35].groupby("league"):
+        add("career", "veteran", f"Joined {league_club(lg)} aged 35 or older", {idx[p] for p in grp["player_id"]})
+
+    counts = defaultdict(lambda: defaultdict(int))
     for p in prompts:
-        counts[p["kind"]] += 1
-    print("Prompt pool:", dict(counts))
+        counts[p["family"]][p["kind"]] += 1
+    for fam, kinds in counts.items():
+        print(f"Prompt pool, {fam}: {sum(kinds.values())}", dict(kinds))
     return prompts
 
 
-DAY_PLAN = ["pair", "nation", "pos", "league", "pair", "nation", "any"]
+# Each day: two classic prompts, two from the new families, then a mix.
+DAY_PLAN = [
+    ["classic"],
+    ["classic"],
+    ["honours"],
+    ["transfers"],
+    ["international", "career"],
+    ["honours", "transfers"],
+    ["classic", "honours", "transfers", "international", "career"],
+]
 
 
-def schedule(prompts, start: dt.date, days: int):
-    rng = random.Random(SEED)
-    pools = defaultdict(list)
+def schedule(prompts, start: dt.date, days: int, kept: dict[str, list[str]]):
+    """Picks 7 prompts a day. Days in `kept` (already published) are left exactly as they are."""
+    families = defaultdict(list)
     for p in prompts:
-        pools[p["kind"]].append(p)
+        families[p["family"]].append(p)
     last_used: dict[str, int] = {}
     out = []
     for d in range(days):
-        chosen, clubs = [], set()
+        date = start + dt.timedelta(days=d)
+        if date.isoformat() in kept:
+            for text in kept[date.isoformat()]:
+                last_used[text] = d
+            out.append((date, None))
+            continue
+        # Seeded per day, so re-running reproduces every day after the kept ones.
+        rng = random.Random(f"{SEED}:{date.isoformat()}")
+        chosen, clubs, kinds = [], set(), set()
 
-        def ok(p):
-            return (d - last_used.get(p["key"], -10**9) >= NO_REPEAT_DAYS
-                    and p not in chosen and not (p["clubs"] & clubs))
+        def ok(p, strict=True):
+            return (d - last_used.get(p["text"], -10**9) >= NO_REPEAT_DAYS
+                    and p not in chosen and not (p["clubs"] & clubs)
+                    and (not strict or p["kind"] not in kinds))
 
-        for kind in DAY_PLAN:
-            kinds = [kind] if kind != "any" else list(pools)
-            cands = [p for k in kinds for p in pools[k] if ok(p)]
-            if not cands:  # fall back to any type rather than repeat
-                cands = [p for p in prompts if ok(p)]
-            # Lean towards prompts with plenty of well-known answers, and away
-            # from ones that have been used before.
-            weights = [math.sqrt(p["known"]) * (0.5 if p["key"] in last_used else 1.0) for p in cands]
+        for slot in DAY_PLAN:
+            cands = [p for f in slot for p in families[f] if ok(p)]
+            if not cands:  # allow a repeated kind, then any family, rather than repeat a prompt
+                cands = [p for f in slot for p in families[f] if ok(p, strict=False)] or [p for p in prompts if ok(p, False)]
+            # Lean towards prompts with plenty of well-known answers, and away from used ones.
+            weights = [math.sqrt(p["known"]) * (0.5 if p["text"] in last_used else 1.0) for p in cands]
             p = rng.choices(cands, weights=weights)[0]
             chosen.append(p)
             clubs |= p["clubs"]
-            last_used[p["key"]] = d
+            kinds.add(p["kind"])
+            last_used[p["text"]] = d
         # Easiest first: most well-known answers relative to total.
         chosen.sort(key=lambda p: -p["known"] / len(p["answers"]))
-        out.append((start + dt.timedelta(days=d), chosen))
+        out.append((date, chosen))
     return out
 
 
@@ -340,6 +505,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default="2026-11-17")
     ap.add_argument("--days", type=int, default=1460)
+    ap.add_argument("--keep-through", default=dt.date.today().isoformat(),
+                    help="leave day files up to this date untouched (they may have been played); 'none' rebuilds all")
     args = ap.parse_args()
 
     tm = ensure_repo(TM_REPO, "transfermarkt-data")
@@ -349,13 +516,23 @@ def main():
     print(f"{len(players)} players. Most famous:", ", ".join(players["name"].head(15)))
 
     prompts = build_prompts(tr, players)
-    days = schedule(prompts, dt.date.fromisoformat(args.start), args.days)
+
+    days_dir = os.path.join(OUT, "days")
+    os.makedirs(days_dir, exist_ok=True)
+    kept: dict[str, list[str]] = {}
+    if args.keep_through != "none":
+        for f in sorted(glob.glob(os.path.join(days_dir, "*.json"))):
+            date = os.path.basename(f)[:-5]
+            if date <= args.keep_through:
+                with open(f, encoding="utf-8") as fh:
+                    kept[date] = [p["text"] for p in json.load(fh)["prompts"]]
+    days = schedule(prompts, dt.date.fromisoformat(args.start), args.days, kept)
+    for f in glob.glob(os.path.join(days_dir, "*.json")):
+        if os.path.basename(f)[:-5] not in kept:
+            os.remove(f)
 
     nations = sorted({n for n in players["nation"] if n})
     nat_idx = {n: i for i, n in enumerate(nations)}
-    os.makedirs(os.path.join(OUT, "days"), exist_ok=True)
-    for f in glob.glob(os.path.join(OUT, "days", "*.json")):
-        os.remove(f)
 
     payload = {
         "nations": nations,
@@ -369,15 +546,17 @@ def main():
 
     index = []
     for date, chosen in days:
+        index.append(date.isoformat())
+        if chosen is None:  # kept as published
+            continue
         day = {"date": date.isoformat(),
                # answers are player indices, most famous first
                "prompts": [{"text": p["text"], "answers": p["answers"]} for p in chosen]}
         with open(os.path.join(OUT, "days", f"{date.isoformat()}.json"), "w", encoding="utf-8") as f:
             json.dump(day, f, ensure_ascii=False, separators=(",", ":"))
-        index.append(date.isoformat())
     with open(os.path.join(OUT, "index.json"), "w") as f:
         json.dump({"first": index[0], "last": index[-1]}, f)
-    print(f"Wrote {len(days)} days from {index[0]} to {index[-1]}.")
+    print(f"{len(days)} days from {index[0]} to {index[-1]}; kept {len(kept)} already-published days unchanged.")
 
 
 if __name__ == "__main__":
