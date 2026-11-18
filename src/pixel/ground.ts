@@ -109,8 +109,29 @@ interface Fan {
   skin: string;
   shirt: string;
   phase: number;
-  standing: boolean; // railside fans are drawn full height
+  standing: boolean; // railside fans are drawn as little full-height figures
+  hair?: string;
+  shade?: string;
+  legs?: string;
+  scarf?: string;
   brolly?: string;
+}
+
+interface Banner {
+  x: number;
+  y: number;
+  w: number;
+  colors: string[];
+}
+
+const HAIR = ["#2a1a10", "#1b1b1b", "#5a3a1a", "#8a5a2a", "#c9a060", "#9a9a9a"];
+const COATS = ["#2a3a5a", "#3a3a46", "#5a3a2a", "#3a4a3a", "#7a2a2a", "#1d2a40", "#4a4a52", "#c9c6b8"];
+const TROUSERS = ["#1f2230", "#2a2a35", "#3a3a40", "#2a3346"];
+
+/** A darker shade of a #rrggbb colour, for the shadowed side of a coat. */
+function shadeOf(hex: string, k = 0.72) {
+  const v = [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * k));
+  return `#${v.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
 }
 
 interface Cloud {
@@ -157,6 +178,7 @@ export class Ground {
   private clouds: Cloud[] = [];
   private rain: { x: number; y: number; v: number }[] = [];
   private subs: Sub[] = [];
+  private banners: Banner[] = [];
   private benchXs: number[] = [];
   private screenBox: { x: number; y: number; w: number; h: number; lines: 1 | 2 } | null = null;
   private boardsY = -1;
@@ -302,17 +324,31 @@ export class Ground {
         for (let x = sx + 1 + ((y / 3) & 1); x < sx + standW - 1; x += 2) {
           if (rand() > s.crowd) continue;
           const pal = x > sx + standW * 0.82 ? AWAY : rand() > 0.82 ? MISC : HOME;
+          const away = pal === AWAY;
           this.fans.push({
             x,
             y,
-            skin: SKIN[Math.floor(rand() * SKIN.length)],
+            skin: rand() > 0.85 ? HAIR[Math.floor(rand() * 3)] : SKIN[Math.floor(rand() * SKIN.length)], // the odd hat or hood
             shirt: pal[Math.floor(rand() * pal.length)],
             phase: rand() * Math.PI * 2,
             standing: false,
+            scarf: rand() > 0.8 ? (away ? "#5ad1e6" : rand() > 0.5 ? COLORS.red : COLORS.chalk) : undefined,
           });
         }
       }
       if (s.boards) this.boardsY = hz - BOARD_H;
+
+      // Club banners hung over the front of the stand.
+      const bannerY = hz - (s.boards ? BOARD_H : 1) - 4;
+      for (let x = sx + 6 + Math.floor(rand() * 10); x < sx + standW - 16; x += 26 + Math.floor(rand() * 30)) {
+        const away = x > sx + standW * 0.82;
+        this.banners.push({
+          x,
+          y: bannerY,
+          w: 10 + Math.floor(rand() * 8),
+          colors: away ? ["#3a6ea5", "#5ad1e6"] : rand() > 0.5 ? [COLORS.red, COLORS.chalk] : [COLORS.red, "#1b1b1b"],
+        });
+      }
 
       // A big screen on the roof.
       if (s.scoreboard === "screen" && roofH) {
@@ -359,14 +395,18 @@ export class Ground {
 
     // Railside fans where there is no stand to sit in.
     if (standH <= 4 && s.crowd > 0) {
-      const n = Math.round(w * s.crowd * 0.35) + 2;
-      for (let i = 0; i < n; i++) {
-        const x = Math.floor(rand() * (w - 6)) + 3;
+      for (let x = 3; x < w - 4; x += 4) {
+        if (rand() > s.crowd * 1.6) continue;
+        const coat = COATS[Math.floor(rand() * COATS.length)];
         this.fans.push({
-          x,
-          y: hz - 6,
+          x: x + Math.floor(rand() * 2),
+          y: hz - 8,
           skin: SKIN[Math.floor(rand() * SKIN.length)],
-          shirt: ["#2a3a5a", "#5a3a2a", "#3a4a3a", "#7a2a2a", "#c9c6b8"][Math.floor(rand() * 5)],
+          shirt: coat,
+          shade: shadeOf(coat),
+          hair: rand() > 0.75 ? [COLORS.red, "#1b2948", "#3a4a3a"][Math.floor(rand() * 3)] : HAIR[Math.floor(rand() * HAIR.length)], // a woolly hat, or hair
+          legs: TROUSERS[Math.floor(rand() * TROUSERS.length)],
+          scarf: rand() > 0.7 ? COLORS.red : undefined,
           phase: rand() * Math.PI * 2,
           standing: true,
           brolly: s.rain && rand() > 0.4 ? ["#D7263D", "#FFD23F", "#3a6ea5", "#1b1b1b"][Math.floor(rand() * 4)] : undefined,
@@ -400,8 +440,9 @@ export class Ground {
     }
 
     if (s.rail) {
-      rect(ctx, 0, hz - 3, w, 1, "#c9c6b8");
-      for (let x = 2; x < w; x += 7) rect(ctx, x, hz - 3, 1, 3, "#9a978a");
+      for (let x = 20 + Math.floor(rand() * 20); x < w - 10; x += 60 + Math.floor(rand() * 50)) {
+        this.banners.push({ x, y: hz - 3, w: 7, colors: rand() > 0.5 ? [COLORS.red, COLORS.chalk] : [COLORS.flood, "#1b2948"] });
+      }
     }
 
     if (s.rain) {
@@ -413,11 +454,11 @@ export class Ground {
 
     // Benches, and the substitutes on them.
     this.benchXs = (this.options.benches ?? [0.76, 0.9]).map((f) => Math.round(w * f)).filter((x) => x > 1 && x + 24 < w);
-    const seats = s.bench === "dugout" ? 6 : s.bench === "bench" ? 3 : 1;
+    const seats = s.bench === "dugout" ? 5 : s.bench === "bench" ? 3 : 1;
     for (const bx of this.benchXs) {
       for (let i = 0; i < seats; i++) {
         this.subs.push({
-          x: bx + 2 + i * 3,
+          x: bx + 1 + i * 4,
           y: hz - (s.bench === "dugout" ? 4 : 5),
           skin: SKIN[Math.floor(rand() * SKIN.length)],
           kit: i % 3 === 1 ? "#c8f03c" : s.bench === "dugout" ? "#1b2948" : "#2a2a35",
@@ -477,22 +518,33 @@ export class Ground {
       else if (mood === "idle") lift = wave > 0.97 ? 1 : 0;
       const y = f.y - lift;
       if (f.standing) {
-        if (f.brolly) {
-          rect(ctx, f.x - 2, y - 3, 5, 1, f.brolly);
-          rect(ctx, f.x - 1, y - 4, 3, 1, f.brolly);
-          rect(ctx, f.x, y - 2, 1, 2, "#333");
+        this.drawSupporter(ctx, f, y, lift > 0 && mood !== "idle");
+        continue;
+      }
+      rect(ctx, f.x, y, 1, 1, f.skin);
+      rect(ctx, f.x, y + 1, 1, 2, f.shirt);
+      if (lift > 0 && (mood === "wild" || mood === "cheer")) {
+        if (f.scarf) {
+          // scarf held up over the head
+          rect(ctx, f.x - 1, y - 2, 3, 1, f.scarf);
+          rect(ctx, f.x - 1, y - 1, 1, 1, f.skin);
+          rect(ctx, f.x + 1, y - 1, 1, 1, f.skin);
+        } else if (mood === "wild") {
+          rect(ctx, f.x - 1, y - 1, 1, 1, f.skin);
+          rect(ctx, f.x + 1, y - 1, 1, 1, f.skin);
         }
-        rect(ctx, f.x, y, 1, 1, f.skin);
-        rect(ctx, f.x, y + 1, 1, 2, f.shirt);
-        rect(ctx, f.x, y + 3, 1, 3 + lift, "#2a2a35");
-      } else {
-        rect(ctx, f.x, y, 1, 1, f.skin);
-        rect(ctx, f.x, y + 1, 1, 2, f.shirt);
       }
-      if (lift > 0 && mood === "wild") {
-        rect(ctx, f.x - 1, y - 1, 1, 1, f.skin);
-        rect(ctx, f.x + 1, y - 1, 1, 1, f.skin);
-      }
+    }
+
+    for (const b of this.banners) {
+      const stripe = Math.max(2, Math.floor(b.w / 4));
+      for (let i = 0; i < b.w; i += stripe) rect(ctx, b.x + i, b.y, Math.min(stripe, b.w - i), 3, b.colors[(i / stripe) & 1]);
+      rect(ctx, b.x, b.y + 3, b.w, 1, "rgba(0,0,0,0.35)");
+    }
+
+    if (s.rail) {
+      rect(ctx, 0, hz - 3, w, 1, "#c9c6b8");
+      for (let x = 2; x < w; x += 7) rect(ctx, x, hz - 3, 1, 3, "#9a978a");
     }
 
     // Camera flashes in the crowd.
@@ -557,42 +609,90 @@ export class Ground {
     }
   }
 
+  /** A railside supporter, 3 × 8: hair or hat, face, coat with a shaded side, hands, two legs. */
+  private drawSupporter(ctx: Ctx, f: Fan, y: number, cheering: boolean) {
+    const x = f.x - 1;
+    if (f.brolly) {
+      rect(ctx, x - 2, y - 2, 7, 1, f.brolly);
+      rect(ctx, x - 1, y - 3, 5, 1, f.brolly);
+      rect(ctx, x + 1, y - 4, 1, 1, f.brolly);
+      rect(ctx, x - 2, y - 1, 1, 1, shadeOf(f.brolly)); // dripping edge
+      rect(ctx, x + 4, y - 1, 1, 1, shadeOf(f.brolly));
+      rect(ctx, x + 2, y - 1, 1, 2, "#333333"); // handle
+    }
+    rect(ctx, x + 1, y, 1, 1, f.hair!);
+    rect(ctx, x + 1, y + 1, 1, 1, f.skin);
+    rect(ctx, x, y + 2, 3, 3, f.shirt);
+    rect(ctx, x + 2, y + 2, 1, 3, f.shade!);
+    if (f.scarf) rect(ctx, x, y + 2, 3, 1, f.scarf);
+    if (cheering) {
+      rect(ctx, x - 1, y, 1, 2, f.shirt); // arms up
+      rect(ctx, x + 3, y, 1, 2, f.shade!);
+      rect(ctx, x - 1, y - 1, 1, 1, f.skin);
+      rect(ctx, x + 3, y - 1, 1, 1, f.skin);
+    } else {
+      rect(ctx, x, y + 4, 1, 1, f.skin);
+      rect(ctx, x + 2, y + 4, 1, 1, f.skin);
+    }
+    rect(ctx, x, y + 5, 1, 3, f.legs!);
+    rect(ctx, x + 2, y + 5, 1, 3, f.legs!);
+  }
+
   private drawBenches(ctx: Ctx, t: number, mood: Mood) {
     const { horizon: hz, style: s } = this;
     for (const bx of this.benchXs) {
       if (s.bench === "dugout") {
-        rect(ctx, bx, hz - 7, 21, 7, "#141a24");
-        rect(ctx, bx - 1, hz - 8, 23, 1, "#9fc0d4");
+        rect(ctx, bx, hz - 8, 21, 8, "#141a24");
+        rect(ctx, bx - 1, hz - 9, 23, 1, "#9fc0d4");
         ctx.globalAlpha = 0.45;
-        rect(ctx, bx - 1, hz - 7, 23, 2, "#9fc0d4");
+        rect(ctx, bx - 1, hz - 8, 23, 2, "#9fc0d4");
         ctx.globalAlpha = 1;
-        rect(ctx, bx - 1, hz - 7, 1, 7, "#6d8ea2");
-        rect(ctx, bx + 21, hz - 7, 1, 7, "#6d8ea2");
+        rect(ctx, bx - 1, hz - 8, 1, 8, "#6d8ea2");
+        rect(ctx, bx + 21, hz - 8, 1, 8, "#6d8ea2");
         rect(ctx, bx, hz - 2, 21, 1, "#2a303c");
       } else if (s.bench === "bench") {
-        rect(ctx, bx, hz - 3, 11, 1, "#8a6a44");
+        rect(ctx, bx, hz - 3, 13, 1, "#8a6a44");
+        rect(ctx, bx, hz - 4, 13, 1, "#a07a50");
         rect(ctx, bx + 1, hz - 2, 1, 2, "#5a4429");
-        rect(ctx, bx + 9, hz - 2, 1, 2, "#5a4429");
-        // the manager, in a long coat
-        rect(ctx, bx + 13, hz - 8, 1, 1, "#e0a878");
-        rect(ctx, bx + 13, hz - 7, 2, 5, "#2a2a35");
-        rect(ctx, bx + 13, hz - 2, 1, 2, "#1b1b1b");
+        rect(ctx, bx + 11, hz - 2, 1, 2, "#5a4429");
+        // the manager, in a long coat, arms folded
+        const mx = bx + 15;
+        rect(ctx, mx + 1, hz - 10, 1, 1, "#9a9a9a");
+        rect(ctx, mx + 1, hz - 9, 1, 1, "#e0a878");
+        rect(ctx, mx, hz - 8, 3, 6, "#2a2a35");
+        rect(ctx, mx + 2, hz - 8, 1, 6, "#1b1b24");
+        rect(ctx, mx, hz - 6, 3, 1, "#3a3a46");
+        rect(ctx, mx, hz - 2, 1, 2, "#111111");
+        rect(ctx, mx + 2, hz - 2, 1, 2, "#111111");
       } else {
-        rect(ctx, bx, hz + 1, 5, 3, "#1b2948"); // kit bag
-        rect(ctx, bx + 1, hz, 3, 1, "#0f1730");
+        rect(ctx, bx, hz + 1, 6, 3, "#1b2948"); // kit bag
+        rect(ctx, bx, hz + 1, 6, 1, "#2a3a60");
+        rect(ctx, bx + 2, hz, 2, 1, "#0f1730");
       }
     }
     for (const sub of this.subs) {
       const fidget = mood === "wild" ? (Math.sin(t * 12 + sub.phase) > 0 ? 1 : 0) : Math.sin(t * 1.5 + sub.phase) > 0.95 ? 1 : 0;
       if (s.bench === "bag") {
-        // one lad stood by his bag, hands in pockets
-        rect(ctx, sub.x + 5, hz - 4 - fidget, 1, 1, sub.skin);
-        rect(ctx, sub.x + 5, hz - 3 - fidget, 1, 3, "#3a3a46");
-        rect(ctx, sub.x + 5, hz, 1, 2, "#1b1b1b");
+        // one lad stood by his bag in a hoodie, hands in pockets
+        const x = sub.x + 6;
+        const y = hz - 7 - fidget;
+        rect(ctx, x, y, 3, 1, "#3a3a46"); // hood up
+        rect(ctx, x + 1, y + 1, 1, 1, sub.skin);
+        rect(ctx, x, y + 1, 1, 1, "#3a3a46");
+        rect(ctx, x + 2, y + 1, 1, 1, "#3a3a46");
+        rect(ctx, x, y + 2, 3, 3, "#3a3a46");
+        rect(ctx, x + 2, y + 2, 1, 3, "#2a2a33");
+        rect(ctx, x, y + 5, 1, 3, "#1f2230");
+        rect(ctx, x + 2, y + 5, 1, 3, "#1f2230");
         continue;
       }
-      rect(ctx, sub.x, sub.y - fidget, 1, 1, sub.skin);
-      rect(ctx, sub.x, sub.y + 1 - fidget, 1, 2, sub.kit);
+      // sat on the bench in a tracksuit top (or a bib)
+      const y = sub.y - fidget - 1;
+      rect(ctx, sub.x + 1, y, 1, 1, "#2a1a10");
+      rect(ctx, sub.x + 1, y + 1, 1, 1, sub.skin);
+      rect(ctx, sub.x, y + 2, 3, 2, sub.kit);
+      rect(ctx, sub.x + 2, y + 2, 1, 2, shadeOf(sub.kit));
+      rect(ctx, sub.x, y + 4, 3, 1, "#1b1b24"); // knees
     }
     // One substitute warming up along the touchline, in a bib.
     if (s.bench !== "bag" && this.benchXs.length) {
@@ -600,13 +700,15 @@ export class Ground {
       const span = 26;
       const p = (t * 6) % (span * 2);
       const x = Math.round(bx - 4 + (p < span ? p : span * 2 - p));
-      const y = hz + 1;
+      const y = hz - 6;
       const stride = Math.floor(t * 8) & 1;
-      rect(ctx, x, y - 6, 1, 1, "#c68a5c");
-      rect(ctx, x, y - 5, 1, 2, "#ff7a1a");
-      rect(ctx, x, y - 3, 1, 1, "#1b1b1b");
-      rect(ctx, x - stride, y - 2, 1, 2, "#c68a5c");
-      rect(ctx, x + 1 - stride, y - 2, 1, 2, "#c68a5c");
+      rect(ctx, x + 1, y, 1, 1, "#2a1a10");
+      rect(ctx, x + 1, y + 1, 1, 1, "#c68a5c");
+      rect(ctx, x, y + 2, 3, 2, "#ff7a1a");
+      rect(ctx, x + 2, y + 2, 1, 2, "#c85a10");
+      rect(ctx, x, y + 4, 3, 1, "#1b1b1b"); // shorts
+      rect(ctx, x + (stride ? 0 : 1), y + 5, 1, 2, "#c68a5c");
+      rect(ctx, x + 2, y + 5, 1, 2, "#c68a5c");
     }
   }
 }
