@@ -10,20 +10,21 @@ import { openStage, type Cue } from "./stage";
 export interface FullTime {
   total: number;
   level: number;
-  /** Each round's depth, null for a miss. */
-  depths: (number | null)[];
+  /** Each round's points, null for a miss. */
+  rounds: (number | null)[];
 }
 
+// One line per level, Sunday league up to the Premier League.
 const VERDICTS = [
-  "Too famous. The deep bench is waiting.",
-  "A decent start. Dig deeper tomorrow.",
+  "Every great scout starts on a Sunday.",
+  "The talent’s out there. Keep looking.",
   "Getting your boots dirty.",
-  "Proper lower-league knowledge.",
-  "Non-league nous.",
   "A groundhopper in the making.",
-  "You know the tea hut by name.",
-  "Grassroots scholar.",
-  "Sunday league legend. Absolute anorak.",
+  "Knocking on the Football League’s door.",
+  "Welcome to the Football League.",
+  "Your little black book is filling up.",
+  "One step from the big time.",
+  "Top flight. The best scout in the land.",
 ];
 
 const SQUARE_PITCH = { miss: 196, tap: 523, curler: 659, worldie: 880 };
@@ -31,9 +32,9 @@ const SQUARE_PITCH = { miss: 196, tap: 523, curler: 659, worldie: 880 };
 const span = (t: number, a: number, b: number) => clamp01((t - a) / (b - a));
 
 /** The final whistle: your total, the division you finished in, and a send-off to match. */
-export function playFullTime({ total, level, depths }: FullTime): Promise<void> {
+export function playFullTime({ total, level, rounds }: FullTime): Promise<void> {
   if (reducedMotion()) return Promise.resolve();
-  // How big a send-off: polite applause near the top, a party at the bottom.
+  // How big a send-off: polite applause in the lower leagues, a party in the Football League.
   const band = level <= 1 ? 0 : level <= 4 ? 1 : 2;
   const mood: Mood = (["idle", "cheer", "wild"] as const)[band];
 
@@ -41,25 +42,25 @@ export function playFullTime({ total, level, depths }: FullTime): Promise<void> 
   const { ctx, w, h, hud, root, bus } = stage;
   hud.innerHTML = `
     <p class="cutscene__title">Full time</p>
-    <p class="cutscene__depth">0m</p>
+    <p class="cutscene__points">0 pts</p>
     <p class="cutscene__level"></p>
     <p class="cutscene__verdict"></p>
     <p class="cutscene__squares" aria-hidden="true"></p>`;
-  const depthEl = hud.querySelector(".cutscene__depth") as HTMLElement;
+  const pointsEl = hud.querySelector(".cutscene__points") as HTMLElement;
   (hud.querySelector(".cutscene__level") as HTMLElement).textContent = LEVELS[level].name;
   (hud.querySelector(".cutscene__verdict") as HTMLElement).textContent = VERDICTS[level];
   const squares = hud.querySelector(".cutscene__squares") as HTMLElement;
-  const tiers = depths.map(tierFor);
+  const tiers = rounds.map(tierFor);
   for (const tier of tiers) {
     const sq = document.createElement("span");
     sq.className = `sq sq--${tier}`;
     squares.append(sq);
   }
-  stage.say(`Full time. ${total} metres: ${LEVELS[level].name}. ${VERDICTS[level]}`);
+  stage.say(`Full time. ${total} points: ${LEVELS[level].name}. ${VERDICTS[level]}`);
 
   const share = h > w ? 0.46 : 0.52;
   const ground = new Ground(level, w, h, share, { benches: [0.12, 0.84], centre: 0.5 });
-  ground.screen = { top: "FT", bottom: `${total}M` };
+  ground.screen = { top: "FT", bottom: String(total) };
   const hz = ground.horizon;
   const gy = hz + Math.round((h - hz) * 0.45);
   const refX = Math.round(w * 0.5) - 4;
@@ -107,7 +108,7 @@ export function playFullTime({ total, level, depths }: FullTime): Promise<void> 
     shadow(ctx, x + 4, gy, 8);
     actor(ctx, img, x, gy - lift, mirror);
 
-    if (t >= 0.9) depthEl.textContent = `${Math.round(total * ease.outCubic(span(t, 0.9, 2.2)))}m`;
+    if (t >= 0.9) pointsEl.textContent = `${Math.round(total * ease.outCubic(span(t, 0.9, 2.2)))} pts`;
   };
 
   const cues: Cue[] = [

@@ -183,7 +183,7 @@ body::after {
   position: absolute;
   left: 0;
   right: 0;
-  top: var(--pos, 0%);
+  top: var(--pos, 100%); /* starts at the bottom, in Sunday league */
   height: 0;
   border-top: 3px solid var(--flood);
   transition: top 1500ms steps(18, end);
@@ -197,15 +197,22 @@ body::after {
   height: 14px;
   filter: drop-shadow(2px 2px 0 rgb(0 0 0 / 0.5));
 }
-.pyramid__depth {
+/* The tag rides on top of the line as the ball climbs... */
+.pyramid__points {
   position: absolute;
   right: 0;
-  top: -1px;
+  bottom: 3px;
   padding: 0 5px 1px;
   background: var(--flood);
   color: var(--ink);
   font: 400 1.125rem/1 var(--display);
   font-variant-numeric: tabular-nums;
+}
+
+/* ...and hangs below it at the very top of the strip. */
+.pyramid__marker.is-top .pyramid__points {
+  top: -1px;
+  bottom: auto;
 }
 
 /* ------------------------------------------------------------------- main */
@@ -613,22 +620,34 @@ body:has(.cutscene) .sound-toggle__label {
   margin: 8px 0 0;
   font: 400 2.125rem/1 var(--display);
 }
-.verdict__depth {
+/* A big number with a small "pts" beside it. */
+.score {
+  display: flex;
+  align-items: baseline;
+  gap: 0.12em;
   margin: 0;
-  font: 400 4.5rem/0.8 var(--display);
+  font-family: var(--display);
   font-variant-numeric: tabular-nums;
+}
+.score__unit {
+  font-size: 0.32em;
+  letter-spacing: 0.04em;
+}
+.verdict__points {
+  font-size: 4.5rem;
+  line-height: 0.8;
   text-shadow: 4px 4px 0 rgb(0 0 0 / 0.5);
 }
-.verdict--tap .verdict__depth {
+.verdict--tap .verdict__points {
   color: var(--tap);
 }
-.verdict--curler .verdict__depth {
+.verdict--curler .verdict__points {
   color: var(--curler);
 }
-.verdict--worldie .verdict__depth {
+.verdict--worldie .verdict__points {
   color: var(--flood);
 }
-.verdict--miss .verdict__depth,
+.verdict--miss .verdict__points,
 .verdict--miss .verdict__label {
   color: var(--red);
 }
@@ -681,14 +700,14 @@ body:has(.cutscene) .sound-toggle__label {
   break-inside: avoid;
   font-size: 1.1875rem;
 }
-.answers__depth {
+.answers__points {
   font-family: var(--display);
   font-size: 1.3125rem;
   color: var(--chalk-dim);
   font-variant-numeric: tabular-nums;
 }
 .answers__row.is-pick,
-.answers__row.is-pick .answers__depth {
+.answers__row.is-pick .answers__points {
   color: var(--flood);
 }
 .answers__row.is-pick .answers__name::before {
@@ -699,8 +718,8 @@ body:has(.cutscene) .sound-toggle__label {
 
 .total {
   margin: 4px 0 0;
-  font: 400 clamp(6rem, 26vw, 9rem) / 0.8 var(--display);
-  font-variant-numeric: tabular-nums;
+  font-size: clamp(6rem, 26vw, 9rem);
+  line-height: 0.8;
   color: var(--flood);
   text-shadow: 4px 4px 0 var(--flood-deep), 8px 8px 0 rgb(0 0 0 / 0.45);
 }
@@ -739,7 +758,7 @@ body:has(.cutscene) .sound-toggle__label {
   color: var(--chalk);
   font: 400 1.5rem/1 var(--display);
 }
-.summary__depth {
+.summary__points {
   font: 400 1.75rem/1 var(--display);
   font-variant-numeric: tabular-nums;
 }
@@ -794,13 +813,13 @@ body:has(.cutscene) .sound-toggle__label {
 }
 .cutscene__title,
 .cutscene__name,
-.cutscene__depth {
+.cutscene__points {
   width: fit-content;
   margin: 0;
   opacity: 0;
 }
 .cutscene__name,
-.cutscene__depth {
+.cutscene__points {
   padding: 2px 10px 0;
   background: rgb(0 0 0 / 0.62);
 }
@@ -831,7 +850,7 @@ body:has(.cutscene) .sound-toggle__label {
   font: 400 clamp(1.75rem, 5vw, 2.75rem) / 1 var(--display);
   text-shadow: 3px 3px 0 #000;
 }
-.cutscene__depth {
+.cutscene__points {
   font: 400 clamp(3rem, 10vw, 5.5rem) / 1 var(--display);
   color: var(--chalk);
   text-shadow: 4px 4px 0 #000;
@@ -840,7 +859,7 @@ body:has(.cutscene) .sound-toggle__label {
   animation: stamp 480ms steps(5) forwards;
 }
 .show-title .cutscene__name,
-.show-title .cutscene__depth {
+.show-title .cutscene__points {
   animation: appear 1ms 300ms forwards;
 }
 @keyframes stamp {
@@ -943,10 +962,10 @@ body:has(.cutscene) .sound-toggle__label {
   color: var(--chalk);
   text-shadow: 4px 4px 0 #3b3d3c, 8px 8px 0 rgb(0 0 0 / 0.6);
 }
-.cutscene--fulltime.show-title .cutscene__depth {
+.cutscene--fulltime.show-title .cutscene__points {
   animation: none;
 }
-.cutscene--fulltime.show-count .cutscene__depth {
+.cutscene--fulltime.show-count .cutscene__points {
   animation: appear 1ms forwards;
 }
 .cutscene__squares {
@@ -1027,7 +1046,7 @@ body:has(.cutscene) .sound-toggle__label {
   .pyramid__ball {
     left: 14px;
   }
-  .pyramid__depth {
+  .pyramid__points {
     font-size: 1.5rem;
     padding: 1px 8px 2px;
   }

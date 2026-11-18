@@ -3,7 +3,7 @@ import { Ground, type Mood } from "./ground";
 
 export const backdropPixel = () => (innerWidth >= 1100 ? 5 : innerWidth >= 760 ? 4 : 3);
 
-/** The ground behind the page. It changes as you sink down the pyramid. */
+/** The ground behind the page. It gets bigger as you climb the pyramid. */
 export function createBackdrop(canvas: HTMLCanvasElement) {
   let level = 0;
   let total = 0;
@@ -21,7 +21,7 @@ export function createBackdrop(canvas: HTMLCanvasElement) {
   };
 
   const label = () => {
-    if (ground) ground.screen = { top: "DEPTH", bottom: `${total}M` };
+    if (ground) ground.screen = { top: "POINTS", bottom: String(total) };
   };
 
   const frame = (t: number) => ground?.draw(ctx, t, mood);

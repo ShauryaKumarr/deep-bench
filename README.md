@@ -7,7 +7,7 @@ A daily football quiz. Seven prompts a day, 25 seconds each:
 - *A goalkeeper who played for Chelsea*
 - *A player from Türkiye who played in La Liga*
 
-Type any player who fits. Wrong guesses cost nothing, so keep going until the clock runs out; your first correct answer locks in. Every correct answer scores, but obscurity pays: the best-known valid answer is worth 10m and the least known 100m, with everything in between ranked by fame. Your total depth (max 700m) places you in the English football pyramid, from the Premier League (0m) down to Sunday league (590m+).
+Type any player who fits. Wrong guesses cost nothing, so keep going until the clock runs out; your first correct answer locks in. Every correct answer scores, but obscurity pays: the best-known valid answer is worth 10 points and the least known 100, with everything in between ranked by fame. Points win promotion up the English football pyramid, from Sunday league (0) through County league (110), the Northern Premier League (180), National League North (240), National League (300), League Two (360), League One (430) and the Championship (500) to the Premier League (580+). A perfect day is 700.
 
 Leaving the page while the clock is running counts that round as a miss.
 
@@ -23,9 +23,9 @@ The game is a static Vite + TypeScript site with no framework. Progress, streaks
 
 All the pixel art is drawn in code on low-resolution canvases (`src/pixel/`), with no image files:
 
-- **Grounds** (`ground.ts`): one stadium per pyramid level, from a floodlit double-tier bowl to a wet park with a dog. The page background shows the ground for your current depth.
-- **Replays** (`cutscene.ts`): after each round a short goal plays, matched to the emoji grid. 🟩 is a tap-in, 🟧 a curler, 🟥 an overhead-kick worldie with fireworks, and ⬛ a shot off the bar. Dropping a division adds a dig down through the turf to the next ground. Click or press any key to skip; they're skipped entirely with reduced motion.
-- **Full time** (`fulltime.ts`): after round seven, the referee blows up, your total counts in, and the division you finished in gets a send-off to match: polite applause near the top, fireworks in non-league. It can be rewatched from the results screen.
+- **Grounds** (`ground.ts`): one ground per pyramid level, from a wet park with a dog up to a floodlit double-tier bowl. The page background shows the ground for the level you've reached, and its scoreboard shows your points.
+- **Replays** (`cutscene.ts`): after each round a short goal plays, matched to the emoji grid. 🟩 is a tap-in, 🟧 a curler, 🟥 an overhead-kick worldie with fireworks, and ⬛ a shot off the bar. Winning promotion adds a climb: the camera rises through the sky to the next ground, floating on its island of turf. Click or press any key to skip; they're skipped entirely with reduced motion.
+- **Full time** (`fulltime.ts`): after round seven, the referee blows up, your total counts in, and the division you finished in gets a send-off to match: polite applause in Sunday and County league, fireworks and a lap of honour from League Two up. It can be rewatched from the results screen.
 - **Sound** (`src/sound.ts`): whistle, kick, net, crowd, groans, fireworks and 8-bit jingles, all synthesised with the Web Audio API (no audio files). Off by default; the speaker button in the corner turns it on and the choice is remembered.
 
 ## Data

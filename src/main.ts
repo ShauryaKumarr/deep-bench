@@ -14,9 +14,10 @@ import {
   ROUNDS,
   ROUND_SECONDS,
   TIER_LABEL,
-  depthFor,
   levelFor,
   levelIndex,
+  pointsFor,
+  pts,
   square,
   tierFor,
   type Tier,
@@ -60,7 +61,9 @@ const panel = (...children: Child[]) => h("div", { class: "panel" }, ...children
 const chip = (tier: Tier, text: string = TIER_LABEL[tier]) => h("span", { class: `chip chip--${tier}` }, text);
 
 const state = () => store.getDay(date);
-const metres = (n: number) => `${n}m`;
+/** A big score: the number in display type, "pts" smaller beside it. */
+const score = (cls: string, n: number) =>
+  h("p", { class: `score ${cls}` }, h("span", { class: "score__num" }, String(n)), h("span", { class: "score__unit" }, "pts"));
 const dayNumber = () =>
   Math.round((Date.parse(`${date}T12:00:00Z`) - Date.parse(`${FIRST_DAY}T12:00:00Z`)) / 86_400_000) + 1;
 
@@ -94,7 +97,7 @@ screen.addEventListener("click", (e) => {
 function grid(): string {
   return Array.from({ length: ROUNDS }, (_, i) => {
     const r = state().rounds[i];
-    return r ? square(r.depth) : "▫️";
+    return r ? square(r.points) : "▫️";
   }).join("");
 }
 
@@ -119,16 +122,16 @@ function intro(forfeited: number | null) {
             { class: "rules" },
             h("li", {}, `${ROUNDS} prompts, ${ROUND_SECONDS} seconds each.`),
             h("li", {}, "Name any player who fits. Wrong guesses cost nothing, so keep going until the clock runs out."),
-            h("li", {}, "The more obscure your answer, the deeper you sink: 10m for the best known, 100m for the least."),
-            h("li", {}, `Dig as deep as ${MAX_TOTAL}m, from the Premier League to Sunday league.`),
+            h("li", {}, "The more obscure your answer, the more points: 10 for the best known, 100 for the least."),
+            h("li", {}, `Points win promotion. Score ${MAX_TOTAL} to climb from Sunday league to the Premier League.`),
           ),
       h(
         "p",
         { class: "chips", "aria-label": "Scoring" },
-        chip("tap", "Tap-in · under 60m"),
-        chip("curler", "Curler · 60–84m"),
-        chip("worldie", "Worldie · 85m+"),
-        chip("miss", "Miss · 0m"),
+        chip("tap", "Tap-in · under 60 pts"),
+        chip("curler", "Curler · 60–84"),
+        chip("worldie", "Worldie · 85+"),
+        chip("miss", "Miss · 0"),
       ),
       h("p", { class: "small" }, "Leaving the page mid-round counts that round as a miss."),
     ),
@@ -210,14 +213,14 @@ function playRound(i: number) {
     input.blur(); // drop the on-screen keyboard before the replay
 
     const before = store.total(state());
-    const depth = pick === null ? null : depthFor(prompt.answers.indexOf(pick), prompt.answers.length);
-    store.finishRound(date, i, { pick, depth });
+    const points = pick === null ? null : pointsFor(prompt.answers.indexOf(pick), prompt.answers.length);
+    store.finishRound(date, i, { pick, points });
     const after = store.total(state());
 
-    const tier = tierFor(depth);
+    const tier = tierFor(points);
     await playCutscene({
       tier,
-      depth: depth ?? 0,
+      points: points ?? 0,
       name: pick === null ? null : players[pick].name,
       before,
       fromLevel: levelIndex(before),
@@ -261,17 +264,17 @@ function answerRow(index: number, rank: number, count: number, pick: number | nu
     "li",
     { class: index === pick ? "answers__row is-pick" : "answers__row" },
     h("span", { class: "answers__name" }, p.name),
-    h("span", { class: "answers__depth" }, metres(depthFor(rank, count))),
+    h("span", { class: "answers__points" }, pts(pointsFor(rank, count))),
   );
 }
 
 function reveal(i: number) {
   const prompt = day.prompts[i];
-  const { pick, depth } = state().rounds[i];
-  const tier = tierFor(depth);
+  const { pick, points } = state().rounds[i];
+  const tier = tierFor(points);
   const n = prompt.answers.length;
-  const shallow = prompt.answers[0];
-  const deep = prompt.answers[n - 1];
+  const famous = prompt.answers[0];
+  const obscure = prompt.answers[n - 1];
   const last = i === ROUNDS - 1;
 
   const next = h("button", { class: "btn", type: "button" }, last ? "Full time: results ▶" : `Next: round ${i + 2} ▶`);
@@ -291,13 +294,13 @@ function reveal(i: number) {
         "div",
         { class: `verdict verdict--${tier}` },
         h("div", {}, chip(tier), h("p", { class: "verdict__label" }, pick === null ? "No answer" : players[pick].name)),
-        h("p", { class: "verdict__depth" }, metres(depth ?? 0)),
+        score("verdict__points", points ?? 0),
       ),
       h(
         "dl",
         { class: "extremes" },
-        h("div", {}, h("dt", {}, "Shallowest"), h("dd", {}, players[shallow].name, h("span", {}, ` ${metres(depthFor(0, n))}`))),
-        h("div", {}, h("dt", {}, "Deepest"), h("dd", {}, players[deep].name, h("span", {}, ` ${metres(depthFor(n - 1, n))}`))),
+        h("div", {}, h("dt", {}, "Best known"), h("dd", {}, players[famous].name, h("span", {}, ` ${pts(pointsFor(0, n))}`))),
+        h("div", {}, h("dt", {}, "Most obscure"), h("dd", {}, players[obscure].name, h("span", {}, ` ${pts(pointsFor(n - 1, n))}`))),
       ),
       h(
         "details",
@@ -313,13 +316,13 @@ function reveal(i: number) {
 
 function fullTime() {
   const total = store.total(state());
-  return playFullTime({ total, level: levelIndex(total), depths: state().rounds.map((r) => r?.depth ?? null) });
+  return playFullTime({ total, level: levelIndex(total), rounds: state().rounds.map((r) => r?.points ?? null) });
 }
 
-function shareText(totalDepth: number): string {
+function shareText(total: number): string {
   return [
     `Deep Bench #${dayNumber()}`,
-    `${metres(totalDepth)} · ${levelFor(totalDepth).name}`,
+    `${pts(total)} · ${levelFor(total).name}`,
     grid(),
     location.origin + import.meta.env.BASE_URL,
   ].join("\n");
@@ -327,15 +330,15 @@ function shareText(totalDepth: number): string {
 
 function results() {
   const s = state();
-  const totalDepth = store.total(s);
-  const level = levelFor(totalDepth);
+  const total = store.total(s);
+  const level = levelFor(total);
   const st = store.stats(date);
   settle("cheer");
 
   const share = h("button", { class: "btn", type: "button" }, "Share result");
   const shared = h("p", { class: "small", "aria-live": "polite" });
   share.addEventListener("click", async () => {
-    const text = shareText(totalDepth);
+    const text = shareText(total);
     try {
       if (navigator.share && matchMedia("(pointer: coarse)").matches) await navigator.share({ text });
       else {
@@ -375,9 +378,9 @@ function results() {
     "results",
     panel(
       h("p", { class: "eyebrow" }, "Full time"),
-      h("p", { class: "total" }, metres(totalDepth)),
+      score("total", total),
       h("h2", { class: "title" }, level.name),
-      h("pre", { class: "share-preview", "aria-label": "Your result" }, shareText(totalDepth)),
+      h("pre", { class: "share-preview", "aria-label": "Your result" }, shareText(total)),
       share,
       shared,
     ),
@@ -390,9 +393,9 @@ function results() {
           return h(
             "li",
             {},
-            h("span", { class: "summary__sq", "aria-hidden": "true" }, square(r?.depth ?? null)),
+            h("span", { class: "summary__sq", "aria-hidden": "true" }, square(r?.points ?? null)),
             h("span", { class: "summary__text" }, p.text, h("br"), h("strong", {}, r?.pick != null ? players[r.pick].name : "Missed")),
-            h("span", { class: "summary__depth" }, metres(r?.depth ?? 0)),
+            h("span", { class: "summary__points" }, String(r?.points ?? 0)),
           );
         }),
       ),
@@ -402,8 +405,8 @@ function results() {
         stat("Played", String(st.played)),
         stat("Streak", String(st.streak)),
         stat("Best streak", String(st.bestStreak)),
-        stat("Deepest", metres(st.best)),
-        stat("Average", metres(st.average)),
+        stat("Best", pts(st.best)),
+        stat("Average", pts(st.average)),
       ),
       h("p", { class: "small" }, "Next team sheet in ", countdown),
       rewatch,

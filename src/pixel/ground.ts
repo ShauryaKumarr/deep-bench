@@ -72,17 +72,17 @@ const base: Style = {
   bench: "dugout",
 };
 
-/** One ground per pyramid level, from a floodlit bowl down to a park on a wet Sunday morning. */
+/** One ground per pyramid level, from a park on a wet Sunday morning up to a floodlit bowl. */
 export const GROUNDS: Style[] = [
-  { ...base, stars: 7, moon: true, stand: 0.62, tiers: 2, crowd: 0.97, lights: 0.94, boards: true, scoreboard: "screen" },
-  { ...base, stars: 6, moon: true, stand: 0.54, tiers: 2, crowd: 0.88, lights: 0.86, boards: true, seats: "#3a1d24", scoreboard: "screen" },
-  { ...base, stars: 5, moon: true, stand: 0.45, standW: 0.94, crowd: 0.74, lights: 0.76, boards: true, seats: "#1d3a2a", scoreboard: "screen" },
-  { ...base, sky: DUSK, stars: 1, stand: 0.37, standW: 0.82, crowd: 0.58, lights: 0.66, boards: true, pitch: ["#2c6b44", "#285f3d"], seats: "#3a2a1a", scoreboard: "screen" },
-  { ...base, sky: DUSK, stars: 0.5, stand: 0.3, standW: 0.64, crowd: 0.44, lights: 0.56, rail: true, pitch: ["#2c6b44", "#285f3d"], concrete: "#3a3a42", scoreboard: "board" },
-  { ...base, sky: EVENING, stars: 0, clouds: 0.35, cloud: ["#454b62", "#515770"], stand: 0.23, standW: 0.46, crowd: 0.32, lights: 0.46, rail: true, trees: 0.35, clubhouse: true, pitch: ["#31693f", "#2c5f39"], concrete: "#44464c", seats: "#44464c", scoreboard: "board", bench: "bench" },
-  { ...base, sky: EVENING, stars: 0, clouds: 0.6, cloud: ["#454b62", "#515770"], stand: 0.16, standW: 0.28, crowd: 0.24, lights: 0.36, rail: true, trees: 0.6, clubhouse: true, pitch: ["#35683c", "#2f5d36"], concrete: "#4a4a4e", seats: "#4a4a4e", mud: 0.08, scoreboard: "board", bench: "bench" },
-  { ...base, sky: OVERCAST, stars: 0, clouds: 0.75, cloud: ["#8a939e", "#b8bfc6"], crowd: 0.16, rail: true, trees: 0.85, treeColors: ["#2c4a2a", "#38592f"], clubhouse: true, litWindows: false, pitch: ["#3f7a3f", "#397039"], mud: 0.18, scoreboard: "board", bench: "bench" },
   { ...base, sky: DRIZZLE, stars: 0, clouds: 0.95, cloud: ["#737b85", "#a0a7ae"], rain: true, crowd: 0.06, trees: 1, treeColors: ["#2a4429", "#33522f"], dog: true, litWindows: false, pitch: ["#4a7a3a", "#43703a"], mud: 0.4, bench: "bag" },
+  { ...base, sky: OVERCAST, stars: 0, clouds: 0.75, cloud: ["#8a939e", "#b8bfc6"], crowd: 0.16, rail: true, trees: 0.85, treeColors: ["#2c4a2a", "#38592f"], clubhouse: true, litWindows: false, pitch: ["#3f7a3f", "#397039"], mud: 0.18, scoreboard: "board", bench: "bench" },
+  { ...base, sky: EVENING, stars: 0, clouds: 0.6, cloud: ["#454b62", "#515770"], stand: 0.16, standW: 0.28, crowd: 0.24, lights: 0.36, rail: true, trees: 0.6, clubhouse: true, pitch: ["#35683c", "#2f5d36"], concrete: "#4a4a4e", seats: "#4a4a4e", mud: 0.08, scoreboard: "board", bench: "bench" },
+  { ...base, sky: EVENING, stars: 0, clouds: 0.35, cloud: ["#454b62", "#515770"], stand: 0.23, standW: 0.46, crowd: 0.32, lights: 0.46, rail: true, trees: 0.35, clubhouse: true, pitch: ["#31693f", "#2c5f39"], concrete: "#44464c", seats: "#44464c", scoreboard: "board", bench: "bench" },
+  { ...base, sky: DUSK, stars: 0.5, stand: 0.3, standW: 0.64, crowd: 0.44, lights: 0.56, rail: true, pitch: ["#2c6b44", "#285f3d"], concrete: "#3a3a42", scoreboard: "board" },
+  { ...base, sky: DUSK, stars: 1, stand: 0.37, standW: 0.82, crowd: 0.58, lights: 0.66, boards: true, pitch: ["#2c6b44", "#285f3d"], seats: "#3a2a1a", scoreboard: "screen" },
+  { ...base, stars: 5, moon: true, stand: 0.45, standW: 0.94, crowd: 0.74, lights: 0.76, boards: true, seats: "#1d3a2a", scoreboard: "screen" },
+  { ...base, stars: 6, moon: true, stand: 0.54, tiers: 2, crowd: 0.88, lights: 0.86, boards: true, seats: "#3a1d24", scoreboard: "screen" },
+  { ...base, stars: 7, moon: true, stand: 0.62, tiers: 2, crowd: 0.97, lights: 0.94, boards: true, scoreboard: "screen" },
 ];
 
 const SKIN = ["#f1c9a5", "#e0a878", "#c68a5c", "#9a6440", "#6e4429", "#4a2c1a"];

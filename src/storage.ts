@@ -4,7 +4,7 @@ import { ROUNDS } from "./scoring";
 export interface RoundResult {
   /** Player index, or null for a miss. */
   pick: number | null;
-  depth: number | null;
+  points: number | null;
 }
 
 export interface DayState {
@@ -25,7 +25,12 @@ function read(): Store {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      if (s && s.v === 1 && s.days) return s;
+      if (s && s.v === 1 && s.days) {
+        // Rounds saved before scores were called points stored them as `depth`.
+        for (const day of Object.values(s.days) as { rounds: (RoundResult & { depth?: number | null })[] }[])
+          for (const r of day.rounds) if (r && r.points === undefined) r.points = r.depth ?? null;
+        return s;
+      }
     }
   } catch {
     /* storage unavailable or corrupt: start fresh */
@@ -73,7 +78,7 @@ export function forfeitAbandoned(date: string): number | null {
     day.active = null;
     return null;
   }
-  finishRound(date, r, { pick: null, depth: null });
+  finishRound(date, r, { pick: null, points: null });
   return r;
 }
 
@@ -82,7 +87,7 @@ export function isComplete(day: DayState): boolean {
 }
 
 export function total(day: DayState): number {
-  return day.rounds.reduce((sum, r) => sum + (r?.depth ?? 0), 0);
+  return day.rounds.reduce((sum, r) => sum + (r?.points ?? 0), 0);
 }
 
 export interface Stats {

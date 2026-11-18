@@ -299,11 +299,11 @@ export const sfx = {
     }, bus);
   },
 
-  /** Digging down a division: a rumble and a falling arpeggio. */
-  dig(bus?: Bus | null) {
+  /** Promotion: a rising whoosh and a climbing arpeggio. */
+  rise(bus?: Bus | null) {
     play((a, out) => {
-      noise(a, out, { dur: 1.9, type: "lowpass", freq: 180, env: [[0, 0], [0.25, 0.45], [1.5, 0.35], [1.9, 0]] });
-      [659, 587, 523, 440, 392, 330, 262].forEach((f, i) => tone(a, out, "square", f, i * 0.12, 0.1, 0.045));
+      noise(a, out, { dur: 1.9, type: "bandpass", freq: 260, freqEnd: 2600, q: 1.2, env: [[0, 0], [0.4, 0.3], [1.5, 0.25], [1.9, 0]] });
+      [262, 330, 392, 440, 523, 587, 659].forEach((f, i) => tone(a, out, "square", f, i * 0.12, 0.1, 0.045));
     }, bus);
   },
 

@@ -1,6 +1,6 @@
 import { LEVELS, type Tier } from "../scoring";
 import { sfx } from "../sound";
-import { clamp01, ease, makeCanvas, rect, reducedMotion, rng, type Ctx } from "./engine";
+import { clamp01, disc, ease, makeCanvas, rect, reducedMotion, rng, type Ctx } from "./engine";
 import { Particles } from "./effects";
 import { Ground, type Mood } from "./ground";
 import { BALL, BICYCLE, COLORS, KEEPER_SPRITES, PLAYER, PLAYER_DOWN, REF_SPRITES } from "./sprites";
@@ -8,9 +8,9 @@ import { openStage, type Cue } from "./stage";
 
 export interface Replay {
   tier: Tier;
-  depth: number;
+  points: number;
   name: string | null;
-  /** Total depth before this round. */
+  /** Total points before this round. */
   before: number;
   fromLevel: number;
   toLevel: number;
@@ -27,7 +27,7 @@ const MOODS: Record<Tier, Mood> = { miss: "groan", tap: "cheer", curler: "cheer"
 /** When the ball reaches the goal (or the bar), per tier. */
 const ARRIVE: Record<Tier, number> = { miss: 1.45, tap: 2.0, curler: 1.75, worldie: 1.6 };
 const RUN_END = 0.9;
-const DESCENT = 1.5;
+const CLIMB = 1.5;
 const LINE = "#dcd9ca";
 
 type V = { x: number; y: number };
@@ -57,52 +57,79 @@ export function shadow(ctx: Ctx, cx: number, y: number, width: number, strength 
   ctx.globalAlpha = 1;
 }
 
-function soil(w: number, h: number): HTMLCanvasElement {
+const hex = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+function mix(a: string, b: string, k: number) {
+  const [x, y] = [hex(a), hex(b)];
+  return `rgb(${x.map((v, i) => Math.round(v + (y[i] - v) * k)).join(",")})`;
+}
+
+/**
+ * The sky between one division and the next, for the promotion climb. Its bottom matches the
+ * current ground's sky; at the top, the bigger ground floats on a ragged island of earth and cloud.
+ */
+function ascent(w: number, h: number, from: string): HTMLCanvasElement {
   const [c, ctx] = makeCanvas(w, h);
-  const rand = rng(99);
-  const layers = ["#3a2a1c", "#33241a", "#2b1f16", "#241a13", "#1d150f", "#16100b"];
-  layers.forEach((col, i) => rect(ctx, 0, Math.floor((i * h) / layers.length), w, Math.ceil(h / layers.length) + 1, col));
-  for (let i = 0; i < (w * h) / 30; i++) {
-    rect(ctx, Math.floor(rand() * w), Math.floor(rand() * h), 1 + Math.floor(rand() * 2), 1, rand() > 0.5 ? "#4a3826" : "#120c08");
+  const rand = rng(7);
+  const top = "#8fb8e4";
+  const steps = 10;
+  for (let i = 0; i < steps; i++) {
+    const y0 = Math.floor((i * h) / steps);
+    rect(ctx, 0, y0, w, Math.ceil(h / steps) + 1, mix(top, from, i / (steps - 1)));
+    if (i) for (let x = y0 & 1; x < w; x += 2) rect(ctx, x, y0, 1, 1, mix(top, from, (i - 1) / (steps - 1)));
   }
-  for (let i = 0; i < w / 12; i++) {
-    const x = Math.floor(rand() * w);
-    const y = Math.floor(rand() * h);
-    rect(ctx, x, y, 3, 2, "#6a6258");
-    rect(ctx, x, y, 2, 1, "#8a8278");
+  // Wisps and a few birds on the way up.
+  for (let i = 0; i < w / 16; i++) {
+    const x = rand() * w;
+    const y = h * (0.35 + rand() * 0.55);
+    const cw = 10 + rand() * 22;
+    ctx.globalAlpha = 0.5;
+    rect(ctx, x, y, cw, 2, "#e8eef6");
+    rect(ctx, x + cw / 4, y - 1, cw / 2, 1, "#e8eef6");
+    ctx.globalAlpha = 1;
   }
-  // roots near the top, a worm further down
-  for (let i = 0; i < w / 20; i++) {
-    let x = Math.floor(rand() * w);
-    for (let y = 0; y < 6 + rand() * 10; y++) {
-      x += Math.round(rand() * 2 - 1);
-      rect(ctx, x, y, 1, 1, "#5a4630");
-    }
+  for (let i = 0; i < 5; i++) {
+    const x = Math.floor(rand() * (w - 6));
+    const y = Math.floor(h * (0.35 + rand() * 0.4));
+    rect(ctx, x, y, 1, 1, "#1b2230");
+    rect(ctx, x + 1, y + 1, 1, 1, "#1b2230");
+    rect(ctx, x + 2, y, 1, 1, "#1b2230");
   }
-  const wx = Math.floor(w * 0.6);
-  const wy = Math.floor(h * 0.55);
-  rect(ctx, wx, wy, 4, 1, "#c27a7a");
-  rect(ctx, wx + 3, wy - 1, 3, 1, "#c27a7a");
+  // Puffs of cloud hugging the underside of the island...
+  for (let x = -4; x < w + 6; x += 6 + Math.floor(rand() * 6)) {
+    const r = 3 + Math.floor(rand() * 5);
+    const y = 7 + Math.floor(rand() * 6);
+    disc(ctx, x, y + 1, r, "#c9d3e0");
+    disc(ctx, x - 1, y, r - 1, "#f1f4f9");
+  }
+  // ...and the island itself: turf edge, then earth hanging in a ragged fringe with the odd root.
+  rect(ctx, 0, 0, w, 1, "#2a5a32");
+  rect(ctx, 0, 1, w, 3, "#5a4229");
+  for (let x = 0; x < w; x++) {
+    const hang = Math.floor(rand() * 4) + (Math.sin(x * 0.35) > 0.6 ? 2 : 0);
+    rect(ctx, x, 4, 1, hang, "#4a3420");
+    if (rand() > 0.94) rect(ctx, x, 4 + hang, 1, 2 + Math.floor(rand() * 3), "#6a5032");
+  }
+  for (let i = 0; i < w / 10; i++) rect(ctx, Math.floor(rand() * w), 1 + Math.floor(rand() * 3), 2, 1, "#6a6258");
   return c;
 }
 
 export function playCutscene(replay: Replay): Promise<void> {
   if (reducedMotion()) return Promise.resolve();
-  const { tier, depth, fromLevel, toLevel } = replay;
-  const descends = toLevel > fromLevel;
+  const { tier, points, fromLevel, toLevel } = replay;
+  const promoted = toLevel > fromLevel;
 
   const stage = openStage(`cutscene--${tier}`, "Replay", "Replay");
   const { ctx, w, h, hud, root, bus } = stage;
-  hud.innerHTML = `<p class="cutscene__title"></p><p class="cutscene__name"></p><p class="cutscene__depth"></p>`;
-  const [titleEl, nameEl, depthEl] = [...hud.children] as HTMLElement[];
+  hud.innerHTML = `<p class="cutscene__title"></p><p class="cutscene__name"></p><p class="cutscene__points"></p>`;
+  const [titleEl, nameEl, pointsEl] = [...hud.children] as HTMLElement[];
   titleEl.textContent = TITLES[tier];
   nameEl.textContent = replay.name ?? "Off the bar";
   const banner = document.createElement("p");
   banner.className = "cutscene__banner";
-  banner.innerHTML = `<span>Relegated!</span> Down to <strong></strong>`;
+  banner.innerHTML = `<span>Promoted!</span> Up to <strong></strong>`;
   banner.querySelector("strong")!.textContent = LEVELS[toLevel].name;
   root.append(banner);
-  stage.say(`${TITLES[tier]}. ${replay.name ?? "No answer"}, ${depth} metres.${descends ? ` Down to ${LEVELS[toLevel].name}.` : ""}`);
+  stage.say(`${TITLES[tier]}. ${replay.name ?? "No answer"}, ${points} points.${promoted ? ` Promoted to ${LEVELS[toLevel].name}.` : ""}`);
 
   // Scene geometry, in art pixels.
   const share = h > w ? 0.46 : 0.52;
@@ -155,14 +182,14 @@ export function playCutscene(replay: Replay): Promise<void> {
   };
 
   const ground = new Ground(fromLevel, w, h, share, { benches: [0.14, 0.3], markings });
-  ground.screen = { top: "DEPTH", bottom: `${replay.before}M` };
-  const below = descends ? new Ground(toLevel, w, h, share) : null;
-  if (below) below.screen = { top: "DEPTH", bottom: `${replay.before + depth}M` };
-  const dirt = descends ? soil(w, Math.round(h * 0.6)) : null;
+  ground.screen = { top: "POINTS", bottom: String(replay.before) };
+  const above = promoted ? new Ground(toLevel, w, h, share) : null;
+  if (above) above.screen = { top: "POINTS", bottom: String(replay.before + points) };
+  const sky = promoted ? ascent(w, Math.round(h * 0.7), ground.style.sky[0]) : null;
 
   const arrive = ARRIVE[tier];
   const end = arrive + (tier === "worldie" ? 2.2 : tier === "miss" ? 1.4 : 1.5);
-  const total = end + (descends ? DESCENT + 0.7 : 0);
+  const total = end + (promoted ? CLIMB + 0.7 : 0);
 
   const particles = new Particles();
   const trail: V[] = [];
@@ -339,24 +366,24 @@ export function playCutscene(replay: Replay): Promise<void> {
   };
 
   const frame = (t: number, dt: number) => {
-    if (!dirt || !below || t < end) world(t, dt);
+    if (!sky || !above || t < end) world(t, dt);
     else {
-      // Dig down through the turf to the next division.
-      const travel = h + dirt.height;
-      const off = Math.round(ease.inOutCubic(span(t, end, end + DESCENT)) * travel);
+      // Climb up through the sky to the next division.
+      const travel = h + sky.height;
+      const off = Math.round(ease.inOutCubic(span(t, end, end + CLIMB)) * travel);
       ctx.save();
-      ctx.translate(0, -off);
+      ctx.translate(0, off);
       world(t, dt);
       ctx.restore();
-      ctx.drawImage(dirt, 0, h - off);
+      ctx.drawImage(sky, 0, off - sky.height);
       ctx.save();
-      ctx.translate(0, h + dirt.height - off);
-      below.draw(ctx, t, off >= travel ? "cheer" : "idle");
+      ctx.translate(0, off - travel);
+      above.draw(ctx, t, off >= travel ? "cheer" : "idle");
       ctx.restore();
     }
     if (t >= arrive) {
       const k = ease.outCubic(span(t, arrive, arrive + 0.7));
-      depthEl.textContent = tier === "miss" ? "0m" : `+${Math.round(depth * k)}m`;
+      pointsEl.textContent = tier === "miss" ? "0 pts" : `+${Math.round(points * k)} pts`;
     }
   };
 
@@ -385,10 +412,10 @@ export function playCutscene(replay: Replay): Promise<void> {
         root.classList.add("show-title");
         if (tier === "miss") {
           sfx.clang(bus);
-          ground.screen = { top: "MISS", bottom: "0M" };
+          ground.screen = { top: "MISS", bottom: "0" };
         } else {
           sfx.net(bus);
-          ground.screen = { top: "GOAL!", bottom: `+${depth}M`, blink: true };
+          ground.screen = { top: "GOAL!", bottom: `+${points}`, blink: true };
         }
         goalCrowd[tier]();
         if (tier === "curler" || tier === "worldie") particles.confetti(Math.round(w * (tier === "worldie" ? 0.8 : 0.3)), w, h);
@@ -396,8 +423,8 @@ export function playCutscene(replay: Replay): Promise<void> {
     },
   ];
   if (tier === "worldie") cues.push({ at: 1.3, run: () => sfx.kick(1.1, bus) });
-  if (descends) {
-    cues.push({ at: end, run: () => sfx.dig(bus) });
+  if (promoted) {
+    cues.push({ at: end, run: () => sfx.rise(bus) });
     cues.push({
       at: end + 0.35,
       run: () => {
