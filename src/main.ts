@@ -2,6 +2,8 @@ import "@fontsource/jersey-10/400";
 import "@fontsource/vt323/400";
 import "./style.css";
 
+import { inject } from "@vercel/analytics";
+
 import { attachAutocomplete } from "./autocomplete";
 import { loadDay, loadPlayers, todayKey, type Day, type Player } from "./data";
 import { createBackdrop } from "./pixel/backdrop";
@@ -26,6 +28,9 @@ import { onSoundChange, setSound, sfx, soundOn } from "./sound";
 import * as store from "./storage";
 
 const FIRST_DAY = "2026-11-17";
+
+// Vercel Web Analytics: cookieless page views. In local dev it only logs to the console.
+inject();
 
 const screen = document.getElementById("screen")!;
 const dayline = document.getElementById("dayline")!;
