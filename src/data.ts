@@ -84,3 +84,9 @@ export function todayKey(now = new Date()): string {
   const d = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+
+export function addDays(date: string, n: number): string {
+  const d = new Date(`${date}T12:00:00`);
+  d.setDate(d.getDate() + n);
+  return todayKey(d);
+}

@@ -4,8 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#070d1c" />
-    <meta name="description" content="A daily football quiz. Seven prompts, 25 seconds each. Name the most obscure player you can and climb the football pyramid." />
+    <meta name="description" content="How deep is your ball knowledge? A daily football quiz: seven prompts, 25 seconds each. Name the most obscure player who fits and climb the football pyramid." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-title" content="Deep Bench" />
+    <!-- preview-tags -->
     <title>Deep Bench</title>
   </head>
   <body>
@@ -26,6 +30,11 @@
           <h1 class="wordmark">Deep Bench</h1>
           <p class="tagline">Scout the unknowns. Climb the pyramid.</p>
           <p class="dayline" id="dayline"></p>
+          <nav class="modes" aria-label="Game modes">
+            <a href="/" data-mode="daily">Today</a>
+            <a href="/?archive" data-mode="archive">Archive</a>
+            <a href="/?friendly" data-mode="friendly">Friendly</a>
+          </nav>
         </header>
         <section id="screen" class="screen" tabindex="-1" aria-live="polite"></section>
       </main>

@@ -255,6 +255,35 @@ body::after {
   font-size: 1.125rem;
 }
 
+/* Mode menu: Today · Archive · Friendly. Hidden on the clock, where leaving forfeits the round. */
+.modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 10px -48px 0 0; /* below the sound toggle, so it can use the masthead's right gutter */
+  font-size: 1.125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.modes a {
+  padding: 0 4px;
+  color: var(--chalk);
+  text-decoration: none;
+  text-shadow: 2px 2px 0 #000;
+}
+.modes a:hover {
+  color: var(--flood);
+}
+.modes a[aria-current="page"] {
+  background: var(--flood);
+  color: var(--ink);
+  text-shadow: none;
+}
+body[data-screen="round"] .modes,
+body[data-screen="loading"] .modes {
+  visibility: hidden;
+}
+
 /* Smaller masthead while the clock is running. */
 body:not([data-screen="intro"]) .wordmark {
   font-size: clamp(2.5rem, 9vw, 4rem);
@@ -301,6 +330,13 @@ body:not([data-screen="intro"]) .tagline {
   margin: var(--b) var(--b) 24px;
   padding: 10px 12px;
   background: var(--panel);
+}
+.notice--challenge {
+  --edge: var(--flood);
+  padding: 12px 14px 4px;
+}
+.notice--challenge p {
+  margin: 0 0 8px;
 }
 
 .rules {
@@ -352,6 +388,9 @@ body:not([data-screen="intro"]) .tagline {
   font-size: 1.75rem;
   letter-spacing: 0.1em;
 }
+.grid--small {
+  font-size: 1.25rem;
+}
 
 .btn {
   --edge: var(--ink);
@@ -364,8 +403,13 @@ body:not([data-screen="intro"]) .tagline {
   color: var(--ink);
   font: 400 1.5rem/1 var(--text);
   text-transform: uppercase;
+  text-decoration: none;
   letter-spacing: 0.08em;
   cursor: pointer;
+}
+/* Room between side-by-side buttons; a right margin disappears harmlessly when they wrap. */
+.btn:has(+ .btn) {
+  margin-right: 16px;
 }
 .btn:hover {
   background: #ffdc66;
@@ -761,6 +805,76 @@ body:has(.cutscene) .sound-toggle__label {
 .summary__points {
   font: 400 1.75rem/1 var(--display);
   font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.summary__rival {
+  display: block;
+  margin-top: 4px;
+  color: var(--chalk-dim);
+  font: 400 1rem/1 var(--text);
+}
+
+/* Head to head with the friend whose link this came from. */
+.h2h {
+  display: grid;
+  grid-template-columns: 1fr; /* side by side from 760px */
+  gap: 16px;
+  margin: 0;
+}
+.h2h__side dt {
+  color: var(--chalk-dim);
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.h2h__side dd {
+  margin: 0;
+}
+.h2h__total {
+  display: block;
+  color: var(--flood);
+  font: 400 2.25rem/1 var(--display);
+  font-variant-numeric: tabular-nums;
+}
+.h2h__level {
+  font-size: 1.0625rem;
+}
+.h2h__grid {
+  margin-top: 6px !important;
+  font-size: 1.125rem;
+  letter-spacing: 0.06em;
+}
+
+/* The archive list. */
+.archive {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.archive__row {
+  display: grid;
+  grid-template-columns: 3.5em 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 4px;
+  border-bottom: 2px solid var(--line);
+  color: var(--chalk);
+  text-decoration: none;
+}
+.archive__row:hover {
+  background: rgb(241 239 228 / 0.06);
+}
+.archive__num {
+  color: var(--flood);
+  font: 400 1.5rem/1 var(--display);
+}
+.archive__status {
+  color: var(--chalk-dim);
+  font-size: 1.125rem;
+}
+.archive__status.is-done {
+  color: var(--chalk);
+  font: 400 1.5rem/1 var(--display);
 }
 
 .stats {
@@ -1022,6 +1136,15 @@ body:has(.cutscene) .sound-toggle__label {
   }
   .stats {
     grid-template-columns: repeat(5, 1fr);
+  }
+  .modes {
+    gap: 6px 18px;
+    margin-right: 0;
+    font-size: 1.25rem;
+    letter-spacing: 0.1em;
+  }
+  .h2h {
+    grid-template-columns: 1fr 1fr;
   }
   .pyramid__level {
     display: flex;

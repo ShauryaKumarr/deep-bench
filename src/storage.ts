@@ -1,4 +1,4 @@
-import { todayKey } from "./data";
+import { addDays } from "./data";
 import { ROUNDS } from "./scoring";
 
 export interface RoundResult {
@@ -11,7 +11,13 @@ export interface DayState {
   rounds: RoundResult[];
   /** Round currently on the clock. Still set on load means the page was left mid-round. */
   active: number | null;
+  /** Started after its own day (from the archive), so it doesn't count towards streaks or stats. */
+  late?: boolean;
 }
+
+/** Friendlies are keyed "f:<code>" and only live in memory: they never touch stats or streaks. */
+export const isFriendly = (key: string) => key.startsWith("f:");
+const memory: Record<string, DayState> = {};
 
 interface Store {
   v: 1;
@@ -48,8 +54,9 @@ function write() {
   }
 }
 
-export function getDay(date: string): DayState {
-  return (store.days[date] ??= { rounds: [], active: null });
+export function getDay(key: string): DayState {
+  if (isFriendly(key)) return (memory[key] ??= { rounds: [], active: null });
+  return (store.days[key] ??= { rounds: [], active: null });
 }
 
 /** Forgets one day's progress, so it can be played again. */
@@ -58,8 +65,11 @@ export function resetDay(date: string) {
   write();
 }
 
-export function startRound(date: string, round: number) {
-  getDay(date).active = round;
+/** `fromArchive`: a past day started from the archive, which then stays out of streaks and stats. */
+export function startRound(key: string, round: number, fromArchive = false) {
+  const day = getDay(key);
+  if (fromArchive && !day.rounds.some(Boolean)) day.late = true;
+  day.active = round;
   write();
 }
 
@@ -98,15 +108,13 @@ export interface Stats {
   average: number;
 }
 
-function addDays(date: string, n: number): string {
-  const d = new Date(`${date}T12:00:00`);
-  d.setDate(d.getDate() + n);
-  return todayKey(d);
-}
+/** Every saved day, for the archive list. */
+export const savedDay = (date: string): DayState | undefined => store.days[date];
 
+/** Stats only count days played on the day itself, so the archive can't pad a streak. */
 export function stats(today: string): Stats {
   const done = Object.entries(store.days)
-    .filter(([, d]) => isComplete(d))
+    .filter(([, d]) => isComplete(d) && !d.late)
     .map(([date, d]) => ({ date, total: total(d) }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
