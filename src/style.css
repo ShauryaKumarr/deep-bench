@@ -280,7 +280,8 @@ body::after {
   text-shadow: none;
 }
 body[data-screen="round"] .modes,
-body[data-screen="loading"] .modes {
+body[data-screen="loading"] .modes,
+body[data-screen^="live-"]:not([data-screen="live-lobby"]):not([data-screen="live-done"]):not([data-screen="live-off"]) .modes {
   visibility: hidden;
 }
 
@@ -717,6 +718,18 @@ body:has(.cutscene) .sound-toggle__label {
   color: var(--flood);
 }
 
+/* "12% of 1,234 players named him", once the answer stats arrive. */
+.reveal__stat {
+  margin: -4px 0 16px;
+  color: var(--flood);
+  font-size: 1.25rem;
+}
+.answers__share,
+.summary__share {
+  color: var(--chalk-dim);
+  font: 400 0.95em/1 var(--text);
+}
+
 .answers {
   margin-top: 18px;
   border-top: 2px solid var(--line);
@@ -843,6 +856,80 @@ body:has(.cutscene) .sound-toggle__label {
   margin-top: 6px !important;
   font-size: 1.125rem;
   letter-spacing: 0.06em;
+}
+
+/* Live rooms. */
+.live-name {
+  display: block;
+  width: 100%;
+  max-width: 20em;
+  margin: 6px 0 18px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: #050a07;
+  color: var(--chalk);
+  font: 400 1.5rem/1 var(--text);
+  box-shadow: 0 0 0 3px var(--chalk-dim);
+}
+.live-name:focus-visible {
+  outline: 3px solid var(--flood);
+  outline-offset: 3px;
+}
+.live-gap {
+  margin-top: 8px;
+}
+.live-list {
+  margin: 6px 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.live-list__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 2px solid var(--line);
+}
+.live-list__row.is-me .live-list__name,
+.live-board__row.is-me .live-board__who {
+  color: var(--flood);
+}
+.live-list__status {
+  color: var(--chalk-dim);
+}
+.live-board {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.live-board__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 2px solid var(--line);
+}
+.live-board__rank {
+  min-width: 1.4em;
+  color: var(--flood);
+  font: 400 1.75rem/1 var(--display);
+}
+.live-board__who {
+  font-size: 1.0625rem;
+  line-height: 1.15;
+}
+.live-board__who strong {
+  font: 400 1.375rem/1 var(--display);
+}
+.live-board__grid {
+  font-size: 0.875rem;
+  letter-spacing: 0.04em;
+}
+.live-board__pts {
+  font: 400 1.75rem/1 var(--display);
+  font-variant-numeric: tabular-nums;
 }
 
 /* The archive list. */

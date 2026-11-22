@@ -26,7 +26,22 @@ The preview cards and icons are drawn with the game's own grounds and screenshot
 npm run images     # writes public/og/*.png and the app icons
 ```
 
-Analytics: besides page views, the game sends `kickoff`, `share` and `challenge_open` events through Vercel Web Analytics (custom events need a Vercel plan that includes them).
+Analytics: besides page views, the game sends `kickoff`, `share`, `challenge_open` and `live_join` events through Vercel Web Analytics (custom events need a Vercel plan that includes them).
+
+## Answer stats and live rooms (Supabase)
+
+There are no logins: like Krillion, nobody signs up to play. Each browser gets a random device id, used only so it counts once per round.
+
+- **Answer stats**: when a daily round ends, the browser records which player it named (or none) through the `record_pick` function, and the reveal shows "12% of 1,234 players named him", the most-named answer, and each valid answer's share. The results add each pick's share, and the share text gets "Rarest pick: named by 2% of players" (no names, so no spoilers). Only the current team sheet is recorded; archive days show the stats without adding to them.
+- **Live rooms** (`/?live`, which becomes `/?room=<code>`; linked from Friendly): mates play the same seven friendly prompts at the same moment, with a live scoreboard after every round, then a final table and a rematch. It runs entirely on Supabase Realtime presence, with no tables or server code. The longest-serving player in the room is the host, whose page runs the clock (closing a round when everyone has answered or 25 seconds are up, and moving on after the reveal); if the host leaves, the next player takes over. A reload rejoins as the same player.
+
+Setup, once:
+
+1. Create a Supabase project (free tier is fine).
+2. In its SQL Editor, run `supabase/schema.sql`.
+3. Put the project URL and its publishable (or anon) key in `src/config.ts`, or set `VITE_SUPABASE_URL` and `VITE_SUPABASE_KEY` at build time. Both are public by design: the key can only call the two functions the schema grants and join Realtime rooms.
+
+Until they're set, answer stats stay hidden and the live links don't appear. For local testing without a backend, add `&local` to a room URL in `npm run dev`: the room then runs over BroadcastChannel between tabs of one browser.
 
 ## Development
 

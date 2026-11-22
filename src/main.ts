@@ -4,7 +4,7 @@ import "./style.css";
 
 import { inject, track } from "@vercel/analytics";
 
-import { attachAutocomplete } from "./autocomplete";
+import { backendReady } from "./config";
 import { addDays, loadDay, loadPlayers, todayKey, type Day, type Player } from "./data";
 import { friendlyPrompts, isFriendlyCode, newFriendlyCode } from "./friendly";
 import { createBackdrop } from "./pixel/backdrop";
@@ -12,35 +12,25 @@ import { playCutscene } from "./pixel/cutscene";
 import { playFullTime } from "./pixel/fulltime";
 import type { Mood } from "./pixel/ground";
 import { createPyramid } from "./pyramid";
-import {
-  MAX_TOTAL,
-  ROUNDS,
-  ROUND_SECONDS,
-  TIER_LABEL,
-  levelFor,
-  levelIndex,
-  pointsFor,
-  pts,
-  square,
-  tierFor,
-  type Tier,
-} from "./scoring";
+import { playPrompt } from "./round";
+import { MAX_TOTAL, ROUNDS, ROUND_SECONDS, levelFor, levelIndex, pointsFor, pts, square, tierFor, type Tier } from "./scoring";
 import { decodeRounds, encodeRounds, levelSlug } from "./share";
 import { onSoundChange, setSound, sfx, soundOn } from "./sound";
+import { dayStats, recordPick, share as shareOf, type RoundStats } from "./stats";
 import * as store from "./storage";
+import { chip, h, linkButton, panel, score, screen, show } from "./ui";
 
 const FIRST_DAY = "2026-11-17";
 
 // Vercel Web Analytics: cookieless page views. In local dev it only logs to the console.
 inject();
 
-const screen = document.getElementById("screen")!;
 const dayline = document.getElementById("dayline")!;
 const pyramid = createPyramid(document.getElementById("pyramid")!);
 const backdrop = createBackdrop(document.getElementById("backdrop") as HTMLCanvasElement);
 
-/** Today's team sheet, a past one from the archive, or a friendly made up on the spot. */
-type Mode = "daily" | "archive" | "friendly";
+/** Today's team sheet, a past one from the archive, a friendly made up on the spot, or a live room. */
+type Mode = "daily" | "archive" | "friendly" | "live";
 
 let players: Player[] = [];
 let day: Day;
@@ -53,34 +43,7 @@ let friendlyCode = "";
 /** A friend's round scores, when the page was opened from their shared result. */
 let rival: (number | null)[] | null = null;
 
-// ---------------------------------------------------------------------------
-// Tiny DOM helper. Strings become text nodes, so player names are never parsed as HTML.
-
-type Child = Node | string | null | undefined | false;
-function h<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  attrs: Record<string, string> = {},
-  ...children: Child[]
-): HTMLElementTagNameMap[K] {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-  for (const c of children) if (c) el.append(c);
-  return el;
-}
-
-function show(name: string, ...children: Child[]) {
-  document.body.dataset.screen = name;
-  screen.replaceChildren(...children.filter((c): c is Node | string => !!c));
-  scrollTo(0, 0);
-}
-
-const panel = (...children: Child[]) => h("div", { class: "panel" }, ...children);
-const chip = (tier: Tier, text: string = TIER_LABEL[tier]) => h("span", { class: `chip chip--${tier}` }, text);
-
 const state = () => store.getDay(key);
-/** A big score: the number in display type, "pts" smaller beside it. */
-const score = (cls: string, n: number) =>
-  h("p", { class: `score ${cls}` }, h("span", { class: "score__num" }, String(n)), h("span", { class: "score__unit" }, "pts"));
 const dayNumber = (d = date) =>
   Math.round((Date.parse(`${d}T12:00:00Z`) - Date.parse(`${FIRST_DAY}T12:00:00Z`)) / 86_400_000) + 1;
 const dateLabel = (d: string) =>
@@ -96,11 +59,6 @@ function event(name: string, props: Record<string, string | number> = {}) {
     /* ignore */
   }
 }
-
-/** A link styled as a button, for moving between modes (each mode is its own page load). */
-const linkButton = (href: string, text: string, quiet = false) =>
-  // A no-break space keeps the ▶ with its last word when a long label wraps on a phone.
-  h("a", { class: quiet ? "btn btn--quiet" : "btn", href }, text.replace(/ ▶$/, " ▶"));
 
 const MOOD_AFTER: Record<Tier, Mood> = { miss: "groan", tap: "cheer", curler: "cheer", worldie: "wild" };
 
@@ -163,12 +121,13 @@ function intro(forfeited: number | null) {
     if (!done) event("kickoff");
     playRound(done);
   });
-  const title = { daily: "Today’s team sheet", archive: `Team sheet #${dayNumber()}`, friendly: "Friendly" }[mode];
+  const title = { daily: "Today’s team sheet", archive: `Team sheet #${dayNumber()}`, friendly: "Friendly", live: "" }[mode];
   const note = {
     daily: "Leaving the page mid-round counts that round as a miss.",
     archive: "From the archive: it won’t count towards your streak or stats. Leaving mid-round still counts as a miss.",
     friendly:
-      "A friendly: seven random international prompts that never count towards your streak. Send the link and your mates get the same seven.",
+      "A friendly: seven random international prompts that never count towards your streak. Send the link and your mates get the same seven, or play them live, all at once.",
+    live: "",
   }[mode];
 
   show(
@@ -199,136 +158,74 @@ function intro(forfeited: number | null) {
       h("p", { class: "small" }, note),
     ),
     button,
+    mode === "friendly" && !done && backendReady() && linkButton("/?live", "Play live with mates", true),
   );
   button.focus({ preventScroll: true });
 }
 
-function playRound(i: number) {
+async function playRound(i: number) {
   const prompt = day.prompts[i];
-  const answers = new Set(prompt.answers);
-  // Same-named players (there are eight Júlio Césars) all count for the valid one.
-  const byName = new Map<string, number>();
-  for (const a of prompt.answers) if (!byName.has(players[a].key)) byName.set(players[a].key, a);
-
   store.startRound(key, i, mode === "archive");
   settle();
 
-  const digits = h("span", { class: "board__digits" }, String(ROUND_SECONDS));
-  const board = h(
-    "div",
-    { class: "board", role: "timer", "aria-label": `${ROUND_SECONDS} seconds left` },
-    h("span", { class: "board__plus", "aria-hidden": "true" }, "+"),
-    digits,
-  );
-  const input = h("input", {
-    class: "guess__input",
-    id: "guess",
-    type: "text",
-    role: "combobox",
-    autocomplete: "off",
-    autocapitalize: "words",
-    spellcheck: "false",
-    "aria-autocomplete": "list",
-    "aria-controls": "options",
-    "aria-expanded": "false",
-    "aria-describedby": "prompt",
-    placeholder: "Start typing a player…",
+  const pick = await playPrompt({ prompt, players, eyebrow: `Round ${i + 1} of ${ROUNDS}`, pips: grid() });
+
+  const before = store.total(state());
+  const points = pick === null ? null : pointsFor(prompt.answers.indexOf(pick), prompt.answers.length);
+  store.finishRound(key, i, { pick, points });
+  if (mode === "daily") recordPick(date, i, pick);
+  const after = store.total(state());
+
+  const tier = tierFor(points);
+  await playCutscene({
+    tier,
+    points: points ?? 0,
+    name: pick === null ? null : players[pick].name,
+    before,
+    fromLevel: levelIndex(before),
+    toLevel: levelIndex(after),
   });
-  const listbox = h("ul", { class: "options", id: "options", role: "listbox", "aria-label": "Players" });
-  listbox.hidden = true;
-  const wrong = h("ul", { class: "wrong", "aria-label": "Wrong guesses" });
-  const status = h("p", { class: "visually-hidden", "aria-live": "assertive" });
-
-  show(
-    "round",
-    panel(
-      h(
-        "div",
-        { class: "round__head" },
-        h(
-          "div",
-          {},
-          h("p", { class: "eyebrow" }, `Round ${i + 1} of ${ROUNDS}`),
-          h("p", { class: "pips", "aria-hidden": "true" }, grid()),
-        ),
-        h("div", { class: "board-wrap" }, board, h("span", { class: "board__handle", "aria-hidden": "true" })),
-      ),
-      h("h2", { class: "prompt", id: "prompt" }, prompt.text),
-      h("div", { class: "guess" }, h("label", { class: "visually-hidden", for: "guess" }, "Your answer"), input, listbox),
-      wrong,
-    ),
-    status,
-  );
-  input.focus({ preventScroll: true });
-  input.addEventListener("input", () => input.classList.remove("is-wrong"));
-
-  const guessed = new Set<number>();
-  const deadline = performance.now() + ROUND_SECONDS * 1000;
-  let finished = false;
-  let lastShown = ROUND_SECONDS;
-
-  const finish = async (pick: number | null) => {
-    if (finished) return;
-    finished = true;
-    clearInterval(tick);
-    ac.close();
-    input.disabled = true;
-    input.blur(); // drop the on-screen keyboard before the replay
-
-    const before = store.total(state());
-    const points = pick === null ? null : pointsFor(prompt.answers.indexOf(pick), prompt.answers.length);
-    store.finishRound(key, i, { pick, points });
-    const after = store.total(state());
-
-    const tier = tierFor(points);
-    await playCutscene({
-      tier,
-      points: points ?? 0,
-      name: pick === null ? null : players[pick].name,
-      before,
-      fromLevel: levelIndex(before),
-      toLevel: levelIndex(after),
-    });
-    settle(MOOD_AFTER[tier]);
-    reveal(i);
-  };
-
-  const tick = window.setInterval(() => {
-    const left = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
-    if (left !== lastShown) {
-      lastShown = left;
-      digits.textContent = String(left);
-      board.setAttribute("aria-label", `${left} seconds left`);
-      board.classList.toggle("is-low", left <= 5);
-      if (left === 10 || left === 5) status.textContent = `${left} seconds left`;
-      if (left > 0 && left <= 5) sfx.tick(left <= 3);
-    }
-    if (left === 0) finish(null);
-  }, 100);
-
-  const ac = attachAutocomplete(input, listbox, players, (index) => {
-    if (finished) return;
-    const hit = answers.has(index) ? index : byName.get(players[index].key);
-    if (hit !== undefined) return void finish(hit);
-    if (guessed.has(index)) return;
-    guessed.add(index);
-    wrong.prepend(h("li", {}, players[index].name));
-    status.textContent = `${players[index].name} doesn’t fit. Keep going.`;
-    sfx.bonk();
-    input.classList.remove("is-wrong");
-    void input.offsetWidth; // restart the shake
-    input.classList.add("is-wrong");
-  });
+  settle(MOOD_AFTER[tier]);
+  reveal(i);
 }
 
 function answerRow(index: number, rank: number, count: number, pick: number | null) {
   const p = players[index];
   return h(
     "li",
-    { class: index === pick ? "answers__row is-pick" : "answers__row" },
+    { class: index === pick ? "answers__row is-pick" : "answers__row", "data-player": String(index) },
     h("span", { class: "answers__name" }, p.name),
     h("span", { class: "answers__points" }, pts(pointsFor(rank, count))),
   );
+}
+
+/** What everyone else answered on this team sheet. Friendlies have no stats. */
+const statsFor = (): Promise<RoundStats[] | null> =>
+  mode === "daily" || mode === "archive" ? dayStats(date) : Promise.resolve(null);
+const playersWord = (n: number) => `${n.toLocaleString()} ${n === 1 ? "player" : "players"}`;
+
+/** Fills in "12% of 1,234 players named him" and each answer's share, once the stats arrive. */
+async function showRoundStats(i: number, line: HTMLElement, mostNamed: HTMLElement, list: HTMLElement) {
+  const r = (await statsFor())?.[i];
+  if (!r?.total || !line.isConnected) return;
+  const { pick } = state().rounds[i];
+  const named = (p: number) => r.counts.get(p) ?? 0;
+  line.textContent =
+    pick === null
+      ? `${shareOf(named(-1), r.total)} of ${playersWord(r.total)} found no answer either.`
+      : `${shareOf(named(pick), r.total)} of ${playersWord(r.total)} named ${players[pick].name}.`;
+  line.hidden = false;
+
+  let top = -1;
+  for (const a of day.prompts[i].answers) if (named(a) > (top < 0 ? 0 : named(top))) top = a;
+  if (top >= 0) {
+    mostNamed.append(h("dt", {}, "Most named"), h("dd", {}, players[top].name, h("span", {}, ` ${shareOf(named(top), r.total)}`)));
+    mostNamed.hidden = false;
+  }
+  for (const row of list.querySelectorAll<HTMLElement>("[data-player]")) {
+    const n = named(Number(row.dataset.player));
+    if (n) row.querySelector(".answers__name")!.append(h("span", { class: "answers__share" }, ` ${shareOf(n, r.total)}`));
+  }
 }
 
 function reveal(i: number) {
@@ -348,6 +245,12 @@ function reveal(i: number) {
     results();
   });
 
+  const statLine = h("p", { class: "reveal__stat" });
+  statLine.hidden = true;
+  const mostNamed = h("div", {});
+  mostNamed.hidden = true;
+  const list = h("ol", {}, ...prompt.answers.map((a, rank) => answerRow(a, rank, n, pick)));
+
   show(
     "reveal",
     panel(
@@ -359,22 +262,20 @@ function reveal(i: number) {
         h("div", {}, chip(tier), h("p", { class: "verdict__label" }, pick === null ? "No answer" : players[pick].name)),
         score("verdict__points", points ?? 0),
       ),
+      statLine,
       h(
         "dl",
         { class: "extremes" },
         h("div", {}, h("dt", {}, "Best known"), h("dd", {}, players[famous].name, h("span", {}, ` ${pts(pointsFor(0, n))}`))),
         h("div", {}, h("dt", {}, "Most obscure"), h("dd", {}, players[obscure].name, h("span", {}, ` ${pts(pointsFor(n - 1, n))}`))),
+        mostNamed,
       ),
-      h(
-        "details",
-        { class: "answers" },
-        h("summary", {}, `All ${n} valid answers`),
-        h("ol", {}, ...prompt.answers.map((a, rank) => answerRow(a, rank, n, pick))),
-      ),
+      h("details", { class: "answers" }, h("summary", {}, `All ${n} valid answers`), list),
     ),
     next,
   );
   next.focus({ preventScroll: true });
+  void showRoundStats(i, statLine, mostNamed, list);
 }
 
 function fullTime() {
@@ -393,13 +294,44 @@ function shareUrl(total: number): string {
   return `${location.origin}${import.meta.env.BASE_URL}r/${levelSlug(levelFor(total))}?${params}`;
 }
 
+/** "Rarest pick: named by 2% of players", once the answer stats are in. Never names the player: no spoilers. */
+let rarestLine: string | null = null;
+/** Below this many players, a share of the answers says more about luck than obscurity. */
+const MIN_PLAYERS_FOR_RAREST = 10;
+
 function shareText(total: number): string {
   return [
     mode === "friendly" ? `Deep Bench friendly ${friendlyCode.toUpperCase()}` : `Deep Bench #${dayNumber()}`,
     `${pts(total)} · ${levelFor(total).name}`,
     grid(),
+    rarestLine,
     `Beat me: ${shareUrl(total)}`,
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Adds each pick's share of the answers to the summary, and the rarest one to the share text. */
+async function showResultStats(total: number, preview: HTMLElement, summary: HTMLElement) {
+  const all = await statsFor();
+  if (!all || !preview.isConnected) return;
+  let rarest: [number, number] | null = null; // [named, total] for the lowest share
+  const rounds = state().rounds;
+  for (let i = 0; i < rounds.length; i++) {
+    const r = rounds[i];
+    const st = all[i];
+    if (!r || r.pick === null || !st?.total) continue;
+    const n = st.counts.get(r.pick) ?? 0;
+    summary.children[i]
+      ?.querySelector(".summary__text")
+      ?.append(h("span", { class: "summary__share" }, ` ${shareOf(n, st.total)} named`));
+    if (st.total >= MIN_PLAYERS_FOR_RAREST && (!rarest || n / st.total < rarest[0] / rarest[1])) rarest = [n, st.total];
+  }
+  if (rarest) {
+    const [n, of] = rarest;
+    rarestLine = `Rarest pick: named by ${shareOf(n, of)} of players`;
+    preview.textContent = shareText(total);
+  }
 }
 
 /** You against the friend whose link this came from. */
@@ -427,7 +359,12 @@ function nextUp() {
   const items = {
     daily: [linkButton("/?friendly", "Play a friendly ▶"), linkButton("/?archive", "Past team sheets", true)],
     archive: [linkButton("/", "Today’s team sheet ▶"), linkButton("/?archive", "More from the archive", true)],
-    friendly: [linkButton("/?friendly", "Another friendly ▶"), linkButton("/", "Today’s team sheet", true)],
+    friendly: [
+      linkButton("/?friendly", "Another friendly ▶"),
+      backendReady() && linkButton("/?live", "Play live with mates", true),
+      linkButton("/", "Today’s team sheet", true),
+    ],
+    live: [],
   }[mode];
   return panel(
     h("p", { class: "eyebrow" }, "Keep playing"),
@@ -490,37 +427,40 @@ function results() {
     rewatch.focus({ preventScroll: true });
   });
 
+  const preview = h("pre", { class: "share-preview", "aria-label": "Your result" }, shareText(total));
+  const summary = h(
+    "ol",
+    { class: "summary" },
+    ...day.prompts.map((p, i) => {
+      const r = s.rounds[i];
+      return h(
+        "li",
+        {},
+        h("span", { class: "summary__sq", "aria-hidden": "true" }, square(r?.points ?? null)),
+        h("span", { class: "summary__text" }, p.text, h("br"), h("strong", {}, r?.pick != null ? players[r.pick].name : "Missed")),
+        h(
+          "span",
+          { class: "summary__points" },
+          String(r?.points ?? 0),
+          rival && h("small", { class: "summary__rival", title: "Their points" }, `vs ${rival[i] ?? 0}`),
+        ),
+      );
+    }),
+  );
+
   show(
     "results",
     panel(
       h("p", { class: "eyebrow" }, "Full time"),
       score("total", total),
       h("h2", { class: "title" }, level.name),
-      h("pre", { class: "share-preview", "aria-label": "Your result" }, shareText(total)),
+      preview,
       share,
       shared,
     ),
     headToHead(total),
     panel(
-      h(
-        "ol",
-        { class: "summary" },
-        ...day.prompts.map((p, i) => {
-          const r = s.rounds[i];
-          return h(
-            "li",
-            {},
-            h("span", { class: "summary__sq", "aria-hidden": "true" }, square(r?.points ?? null)),
-            h("span", { class: "summary__text" }, p.text, h("br"), h("strong", {}, r?.pick != null ? players[r.pick].name : "Missed")),
-            h(
-              "span",
-              { class: "summary__points" },
-              String(r?.points ?? 0),
-              rival && h("small", { class: "summary__rival", title: "Their points" }, `vs ${rival[i] ?? 0}`),
-            ),
-          );
-        }),
-      ),
+      summary,
       mode === "daily" &&
         h(
           "dl",
@@ -537,6 +477,7 @@ function results() {
     nextUp(),
   );
   share.focus({ preventScroll: true });
+  void showResultStats(total, preview, summary);
 }
 
 /** Every past team sheet, newest first. */
@@ -596,6 +537,8 @@ function markMode(current: Mode) {
  *   /?friendly            a new friendly, which becomes /?f=<code>
  *   /?f=<code>            that friendly
  *   …&c=<rounds>          opened from a friend's result: a head to head
+ *   /?live                a new live room, which becomes /?room=<code>
+ *   /?room=<code>         that live room
  */
 async function boot() {
   show("loading", h("p", { class: "small loading" }, "Warming up…"));
@@ -608,6 +551,37 @@ async function boot() {
     dayline.textContent = "The archive";
     settle();
     return archiveList();
+  }
+
+  if (params.has("live") || params.has("room")) {
+    mode = "live";
+    markMode("friendly"); // live rooms are friendlies played together
+    let room = (params.get("room") ?? "").toLowerCase();
+    if (!isFriendlyCode(room)) {
+      room = newFriendlyCode();
+      history.replaceState(null, "", `?room=${room}${params.has("local") ? "&local" : ""}`);
+    }
+    dayline.textContent = `Live room · ${room.toUpperCase()}`;
+    pyramid.set(0);
+    backdrop.set(0, 0, "idle");
+    let startLive: typeof import("./live").startLive;
+    try {
+      // Live rooms load on demand, so the daily game doesn't carry them.
+      [players, { startLive }] = await Promise.all([loadPlayers(), import("./live")]);
+    } catch {
+      return failure("The data didn’t load. Check your connection and reload.");
+    }
+    event("live_join");
+    return startLive({
+      players,
+      room,
+      // Dev only: ?local runs the room over BroadcastChannel between tabs, with no backend.
+      local: import.meta.env.DEV && params.has("local"),
+      onScore: (total, mood) => {
+        pyramid.set(total);
+        backdrop.set(levelIndex(total), total, mood);
+      },
+    });
   }
 
   if (params.has("f") || params.has("friendly")) {
