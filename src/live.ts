@@ -1,9 +1,10 @@
 // Live rooms: mates play the same seven prompts at the same moment, with a live scoreboard.
 //
-// Everything travels as Realtime presence, with no server code or tables: each player shares
-// their name and round scores, and the host (whoever has been in the room longest) also
-// shares the game's state. Presence is replayed to anyone who joins, so latecomers catch up,
-// and if the host leaves, the next longest-serving player carries on from the last state seen.
+// Everything travels over Supabase Realtime, with no server code or tables: presence says who
+// is connected, and each player broadcasts their name and round scores; the host (whoever has
+// been in the room longest) also broadcasts the game's state. Everyone answers a newcomer's
+// hello, so latecomers catch up, and if the host leaves, the next longest-serving player
+// carries on from the last state seen.
 // Prompts come from the friendly generator, seeded per game, so nobody downloads anything new.
 
 import { SUPABASE_KEY, SUPABASE_URL, backendReady } from "./config";
@@ -19,6 +20,12 @@ import { chip, h, linkButton, panel, score, show } from "./ui";
 const ROUND_GRACE_MS = 2500;
 /** How long each round's reveal stays up before the host's page moves everyone on. */
 const REVEAL_MS = 12_000;
+/** Supabase: a player's changes within this long go out as one message. */
+const SEND_MS = 150;
+/** Supabase: how long someone presence doesn't list may stay quiet before they're dropped. */
+const STALE_MS = 8000;
+/** Someone opening a room link waits up to this long to hear who's there before anything else. */
+const SETTLE_MS = 3000;
 const MAX_NAME = 16;
 const NAME_KEY = "deep-bench:name";
 
@@ -61,6 +68,8 @@ export interface LiveOptions {
   room: string;
   /** Dev only: run the room over BroadcastChannel between tabs of one browser, with no backend. */
   local: boolean;
+  /** A room this page just made up, so nobody else can be in it yet. */
+  fresh: boolean;
   /** Moves the pyramid and the ground behind the page. */
   onScore(total: number, mood: Mood): void;
 }
@@ -100,6 +109,14 @@ function cleanMember(v: unknown): Member | null {
 
 // ---------------------------------------------------------------- transports
 
+/**
+ * Supabase Realtime. Presence lets a client make only 5 calls per 30 seconds (more and the
+ * server closes the channel), so it only says who is connected: each browser tracks itself
+ * once per connection. Everything that changes (names, answers, the game's state) goes out as
+ * Broadcast messages instead: a browser sends its state when it changes, at most every
+ * SEND_MS, and everyone answers a newcomer's "hello" with theirs. Nothing repeats on a timer,
+ * so a quiet room costs nothing against the project's monthly message quota.
+ */
 async function supabaseTransport(room: string): Promise<Transport> {
   // Loaded only when someone opens a live room, so the daily game stays small.
   const { RealtimeClient } = await import("@supabase/realtime-js");
@@ -107,27 +124,104 @@ async function supabaseTransport(room: string): Promise<Transport> {
     params: { apikey: SUPABASE_KEY },
   });
   let channel: ReturnType<typeof client.channel> | null = null;
+  let me: Member;
+  let onSync: (members: Member[]) => void = () => {};
+  /** The latest state each other player broadcast. */
+  const others = new Map<string, { m: Member; seen: number }>();
+  /** Who presence says is connected, with what they tracked on arrival. */
+  let present = new Map<string, Member>();
+  /** Players who said goodbye; presence can take a moment to agree. */
+  const gone = new Set<string>();
+  let timer = 0;
+  let sweep = 0;
+
+  const emit = () => {
+    const list = [me];
+    for (const [id, o] of others) if (id !== me.id) list.push(o.m);
+    // Connected but not heard from yet: shown from what they tracked on arrival.
+    for (const [id, m] of present) if (id !== me.id && !others.has(id) && !gone.has(id)) list.push(m);
+    onSync(list);
+  };
+  /** Over the open socket only: realtime-js would otherwise quietly fall back to an HTTP request. */
+  const push = (event: string, payload: object) => {
+    if (channel && client.isConnected() && channel.state === "joined") void channel.send({ type: "broadcast", event, payload });
+  };
+  const send = () => {
+    timer = 0;
+    push("state", me);
+  };
+  const sendSoon = () => {
+    if (!timer) timer = window.setTimeout(send, SEND_MS);
+  };
+  /** Drops players who left without a word: presence doesn't list them and they've gone quiet. */
+  const prune = () => {
+    const now = Date.now();
+    let changed = false;
+    for (const [id, o] of others)
+      if (!present.has(id) && now - o.seen > STALE_MS) {
+        others.delete(id);
+        changed = true;
+      }
+    if (changed) emit();
+  };
+
   return {
-    join(me, onSync) {
-      const ch = client.channel(`deep-bench-room:${room}`, { config: { presence: { key: me.id } } });
+    join(m, cb) {
+      me = m;
+      onSync = cb;
+      const ch = client.channel(`deep-bench-room:${room}`, {
+        config: { presence: { key: me.id }, broadcast: { self: false } },
+      });
       channel = ch;
       ch.on("presence", { event: "sync" }, () => {
-        const latest = Object.values(ch.presenceState()).map((metas) => metas[metas.length - 1]);
-        onSync(latest.map(cleanMember).filter((m): m is Member => m !== null));
+        present = new Map();
+        for (const [key, metas] of Object.entries(ch.presenceState())) {
+          const p = cleanMember({ ...(metas[metas.length - 1] as object), id: key });
+          if (p) present.set(p.id, p);
+        }
+        prune();
+        emit();
       });
+      ch.on("broadcast", { event: "hello" }, () => sendSoon());
+      ch.on("broadcast", { event: "state" }, ({ payload }) => {
+        const p = cleanMember(payload);
+        if (!p || p.id === me.id) return;
+        gone.delete(p.id);
+        others.set(p.id, { m: p, seen: Date.now() });
+        emit();
+      });
+      ch.on("broadcast", { event: "leave" }, ({ payload }) => {
+        const id = typeof payload?.id === "string" ? payload.id : "";
+        if (!id || id === me.id) return;
+        gone.add(id);
+        others.delete(id);
+        emit();
+      });
+      sweep = window.setInterval(prune, 1000);
       return new Promise((resolve, reject) => {
+        let joined = false;
+        // Runs again after every reconnect: tracking and saying hello again catches up both ways.
         ch.subscribe((status) => {
           if (status === "SUBSCRIBED") {
-            void ch.track(me as unknown as Record<string, unknown>);
-            resolve();
-          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") reject(new Error(status));
+            void ch.track({ name: me.name, joined: me.joined });
+            push("hello", {});
+            send();
+            if (!joined) {
+              joined = true;
+              resolve();
+            }
+          } else if (!joined && (status === "CHANNEL_ERROR" || status === "TIMED_OUT")) reject(new Error(status));
         });
       });
     },
-    update(me) {
-      void channel?.track(me as unknown as Record<string, unknown>);
+    update(m) {
+      me = m;
+      sendSoon();
     },
     leave() {
+      clearInterval(sweep);
+      clearTimeout(timer);
+      push("leave", { id: me.id });
       if (channel) void client.removeChannel(channel);
       client.disconnect();
     },
@@ -249,6 +343,12 @@ export async function startLive(o: LiveOptions) {
     return p;
   };
 
+  // Opening someone's room link: hold on until we've heard who's there, so this page doesn't
+  // briefly think it's alone (and so in charge) and put up a lobby of its own.
+  const settleBy = o.fresh ? 0 : Date.now() + SETTLE_MS;
+  let heardAt = 0;
+  let settled = o.fresh;
+
   show("loading", h("p", { class: "small loading" }, "Joining the room…"));
   let transport: Transport;
   try {
@@ -256,6 +356,7 @@ export async function startLive(o: LiveOptions) {
     await transport.join(me, (list) => {
       const others = list.filter((m) => m.id !== me.id);
       members = [me, ...others].sort((a, b) => a.joined - b.joined || a.id.localeCompare(b.id));
+      if (others.length && !heardAt) heardAt = Date.now();
       step();
     });
   } catch {
@@ -322,6 +423,12 @@ export async function startLive(o: LiveOptions) {
   }
 
   function step() {
+    if (!settled) {
+      // Replies to our hello arrive together, so a moment after the first we've heard everyone.
+      const now = Date.now();
+      if (now < settleBy && !(heardAt && now - heardAt >= 400)) return;
+      settled = true;
+    }
     if (amHost()) {
       if (!me.game) setGame(game); // taking over: carry on from the last state seen
       hostDrive();

@@ -557,7 +557,8 @@ async function boot() {
     mode = "live";
     markMode("friendly"); // live rooms are friendlies played together
     let room = (params.get("room") ?? "").toLowerCase();
-    if (!isFriendlyCode(room)) {
+    const fresh = !isFriendlyCode(room);
+    if (fresh) {
       room = newFriendlyCode();
       history.replaceState(null, "", `?room=${room}${params.has("local") ? "&local" : ""}`);
     }
@@ -577,6 +578,7 @@ async function boot() {
       room,
       // Dev only: ?local runs the room over BroadcastChannel between tabs, with no backend.
       local: import.meta.env.DEV && params.has("local"),
+      fresh,
       onScore: (total, mood) => {
         pyramid.set(total);
         backdrop.set(levelIndex(total), total, mood);

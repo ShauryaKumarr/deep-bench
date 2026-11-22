@@ -33,15 +33,15 @@ Analytics: besides page views, the game sends `kickoff`, `share`, `challenge_ope
 There are no logins: like Krillion, nobody signs up to play. Each browser gets a random device id, used only so it counts once per round.
 
 - **Answer stats**: when a daily round ends, the browser records which player it named (or none) through the `record_pick` function, and the reveal shows "12% of 1,234 players named him", the most-named answer, and each valid answer's share. The results add each pick's share, and the share text gets "Rarest pick: named by 2% of players" (no names, so no spoilers). Only the current team sheet is recorded; archive days show the stats without adding to them.
-- **Live rooms** (`/?live`, which becomes `/?room=<code>`; linked from Friendly): mates play the same seven friendly prompts at the same moment, with a live scoreboard after every round, then a final table and a rematch. It runs entirely on Supabase Realtime presence, with no tables or server code. The longest-serving player in the room is the host, whose page runs the clock (closing a round when everyone has answered or 25 seconds are up, and moving on after the reveal); if the host leaves, the next player takes over. A reload rejoins as the same player.
+- **Live rooms** (`/?live`, which becomes `/?room=<code>`; linked from Friendly): mates play the same seven friendly prompts at the same moment, with a live scoreboard after every round, then a final table and a rematch. It runs on Supabase Realtime, with no tables or server code. Presence only says who is connected (each browser tracks itself once per connection, because Supabase closes the channel of a client that makes more than 5 presence calls in 30 seconds); names, answers and the game's state go out as Broadcast messages when they change, and everyone answers a newcomer's hello with theirs, so latecomers and reconnecting phones catch up. The longest-serving player in the room is the host, whose page runs the clock (closing a round when everyone has answered or 25 seconds are up, and moving on after the reveal); if the host leaves, the next player takes over. A reload rejoins as the same player. A four-player game uses roughly 200 Realtime messages (each broadcast counts once per receiver), so the free plan's 2 million a month covers about 10,000 of them.
 
 Setup, once:
 
 1. Create a Supabase project (free tier is fine).
 2. In its SQL Editor, run `supabase/schema.sql`.
-3. Put the project URL and its publishable (or anon) key in `src/config.ts`, or set `VITE_SUPABASE_URL` and `VITE_SUPABASE_KEY` at build time. Both are public by design: the key can only call the two functions the schema grants and join Realtime rooms.
+3. Put the project URL and its publishable (or anon) key in `src/config.ts` (done for the live project), or set `VITE_SUPABASE_URL` and `VITE_SUPABASE_KEY` at build time to override them. Both are public by design: the key can only call the two functions the schema grants and join Realtime rooms. Never put the secret or `service_role` key in the site.
 
-Until they're set, answer stats stay hidden and the live links don't appear. For local testing without a backend, add `&local` to a room URL in `npm run dev`: the room then runs over BroadcastChannel between tabs of one browser.
+Setting both variables to an empty string builds the game without a backend: answer stats stay hidden and the live links don't appear. Do that (or point them at a test project) when testing locally, so test games don't add to the real answer stats. For live rooms without a backend, add `&local` to a room URL in `npm run dev`: the room then runs over BroadcastChannel between tabs of one browser.
 
 ## Development
 
