@@ -14,7 +14,7 @@ import type { Mood } from "./pixel/ground";
 import { playPrompt } from "./round";
 import { ROUNDS, ROUND_SECONDS, levelFor, pointsFor, pts, square, tierFor } from "./scoring";
 import { sfx } from "./sound";
-import { chip, h, linkButton, panel, score, show } from "./ui";
+import { canShareSheet, chip, h, linkButton, panel, score, show } from "./ui";
 
 /** How long the host waits past the clock for the last answers to arrive. */
 const ROUND_GRACE_MS = 2500;
@@ -488,10 +488,11 @@ export async function startLive(o: LiveOptions) {
       const url = `${location.origin}/?room=${o.room}`;
       const text = `Play Deep Bench live with me: ${url}`;
       try {
-        if (navigator.share && matchMedia("(pointer: coarse)").matches) await navigator.share({ text });
+        if (canShareSheet()) await navigator.share({ text });
         else {
-          await navigator.clipboard.writeText(text);
-          said.textContent = "Invite copied. Anyone with the link joins this room.";
+          // Just the link on a computer, so it also works pasted into an address bar.
+          await navigator.clipboard.writeText(url);
+          said.textContent = "Link copied. Anyone who opens it joins this room.";
         }
       } catch (e) {
         if ((e as DOMException)?.name !== "AbortError") said.textContent = `Couldn’t copy. The link is ${url}`;

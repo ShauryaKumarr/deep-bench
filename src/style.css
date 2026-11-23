@@ -790,6 +790,10 @@ body:has(.cutscene) .sound-toggle__label {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.share-preview a {
+  color: var(--flood);
+  text-underline-offset: 3px;
+}
 
 .summary {
   margin: 0 0 20px;

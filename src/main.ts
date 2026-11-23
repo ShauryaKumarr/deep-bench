@@ -18,7 +18,7 @@ import { decodeRounds, encodeRounds, levelSlug } from "./share";
 import { onSoundChange, setSound, sfx, soundOn } from "./sound";
 import { dayStats, recordPick, share as shareOf, type RoundStats } from "./stats";
 import * as store from "./storage";
-import { chip, h, linkButton, panel, score, screen, show } from "./ui";
+import { canShareSheet, chip, copyText, h, linkButton, linkify, panel, score, screen, show } from "./ui";
 
 const FIRST_DAY = "2026-11-17";
 
@@ -330,7 +330,7 @@ async function showResultStats(total: number, preview: HTMLElement, summary: HTM
   if (rarest) {
     const [n, of] = rarest;
     rarestLine = `Rarest pick: named by ${shareOf(n, of)} of players`;
-    preview.textContent = shareText(total);
+    preview.replaceChildren(...linkify(shareText(total)));
   }
 }
 
@@ -392,14 +392,25 @@ function results() {
     const text = shareText(total);
     event("share", { level: level.short });
     try {
-      if (navigator.share && matchMedia("(pointer: coarse)").matches) await navigator.share({ text });
+      if (canShareSheet()) await navigator.share({ text });
       else {
-        await navigator.clipboard.writeText(text);
-        shared.textContent = "Copied. Paste it in the group chat: whoever opens the link plays the same seven.";
+        await copyText(text);
+        shared.textContent = "Result copied. Paste it in the group chat: whoever opens the link plays the same seven.";
       }
     } catch (e) {
       if ((e as DOMException)?.name === "AbortError") return; // closed the share sheet
       shared.textContent = "Couldn’t share. Copy it from above instead.";
+    }
+  });
+  // On a computer, the link on its own: it pastes straight into an address bar or anywhere else.
+  const copyLink = !canShareSheet() && h("button", { class: "btn btn--quiet", type: "button" }, "Copy link");
+  if (copyLink) copyLink.addEventListener("click", async () => {
+    event("share", { level: level.short, kind: "link" });
+    try {
+      await navigator.clipboard.writeText(shareUrl(total));
+      shared.textContent = "Link copied. Whoever opens it plays the same seven, then sees your score against theirs.";
+    } catch {
+      shared.textContent = `Couldn’t copy. The link is ${shareUrl(total)}`;
     }
   });
 
@@ -427,7 +438,7 @@ function results() {
     rewatch.focus({ preventScroll: true });
   });
 
-  const preview = h("pre", { class: "share-preview", "aria-label": "Your result" }, shareText(total));
+  const preview = h("pre", { class: "share-preview", "aria-label": "Your result" }, ...linkify(shareText(total)));
   const summary = h(
     "ol",
     { class: "summary" },
@@ -456,6 +467,7 @@ function results() {
       h("h2", { class: "title" }, level.name),
       preview,
       share,
+      copyLink,
       shared,
     ),
     headToHead(total),
